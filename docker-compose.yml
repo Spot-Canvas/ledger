@@ -1,0 +1,46 @@
+# Ledger local development infrastructure.
+#
+# Uses the same ports as spot-canvas-app (shared database and NATS).
+# If spot-canvas-app containers are already running, use those instead:
+#   task infra:status   — check what's running
+#
+# Port mapping (matches spot-canvas-app defaults):
+#   PostgreSQL: 5432
+#   NATS:       4222 (client), 8222 (monitoring)
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ledger-db
+    environment:
+      POSTGRES_USER: spot
+      POSTGRES_PASSWORD: spot
+      POSTGRES_DB: spot_canvas
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spot -d spot_canvas"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: nats:latest
+    container_name: ledger-nats
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "${NATS_PORT:-4222}:4222"
+      - "${NATS_MONITOR_PORT:-8222}:8222"
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  nats_data:

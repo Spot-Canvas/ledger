@@ -1,0 +1,218 @@
+version: "3"
+
+vars:
+  BINARY: bin/ledger
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  # ─── Build & Run ───────────────────────────────────────────
+
+  build:
+    desc: Build ledger binary
+    cmds:
+      - go build -o {{.BINARY}} ./cmd/ledger
+
+  run:
+    desc: Run ledger service (build + run)
+    deps: [build]
+    dotenv: [".env"]
+    cmds:
+      - ./{{.BINARY}}
+
+  dev:
+    desc: Run ledger service directly with go run
+    dotenv: [".env"]
+    cmds:
+      - go run ./cmd/ledger
+
+  # ─── Testing ───────────────────────────────────────────────
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test ./... -count=1
+
+  test:v:
+    desc: Run unit tests (verbose)
+    cmds:
+      - go test ./... -v -count=1
+
+  test:race:
+    desc: Run unit tests with race detector
+    cmds:
+      - go test -race ./... -count=1
+
+  test:integration:
+    desc: Run integration tests (requires PostgreSQL + NATS)
+    dotenv: [".env"]
+    cmds:
+      - go test -tags=integration ./... -v -count=1
+
+  test:all:
+    desc: Run unit + integration tests
+    dotenv: [".env"]
+    cmds:
+      - go test -tags=integration ./... -v -count=1 -race
+
+  test:cover:
+    desc: Run tests with coverage report
+    cmds:
+      - go test ./... -coverprofile=coverage.out
+      - go tool cover -func=coverage.out
+      - echo "Open HTML report with{{":"}} go tool cover -html=coverage.out"
+
+  # ─── Code Quality ──────────────────────────────────────────
+
+  lint:
+    desc: Run go vet and staticcheck
+    cmds:
+      - go vet ./...
+      - cmd: staticcheck ./...
+        ignore_error: true
+
+  fmt:
+    desc: Format all Go files
+    cmds:
+      - gofmt -w .
+
+  check:
+    desc: Run all checks (fmt, vet, test)
+    cmds:
+      - gofmt -l .
+      - go vet ./...
+      - go test ./... -count=1
+
+  # ─── Infrastructure ────────────────────────────────────────
+  #
+  # The ledger shares PostgreSQL and NATS with spot-canvas-app.
+  # If spot-canvas-app containers (spot-canvas-db, spot-canvas-nats)
+  # are already running, use `task infra:status` to check and skip
+  # `task infra:up`. The .env defaults connect to localhost:5432/4222
+  # which works with either set of containers.
+
+  infra:up:
+    desc: Start PostgreSQL and NATS containers
+    cmds:
+      - |
+        # Check for port conflicts with spot-canvas-app containers
+        if docker ps --format '{{`{{.Names}}`}}' 2>/dev/null | grep -q spot-canvas-db; then
+          echo "ℹ  spot-canvas-db is already running on port 5432 — skipping postgres"
+          echo "   The ledger will share the existing database."
+          SKIP_PG=1
+        fi
+        if docker ps --format '{{`{{.Names}}`}}' 2>/dev/null | grep -q spot-canvas-nats; then
+          echo "ℹ  spot-canvas-nats is already running on port 4222 — skipping nats"
+          SKIP_NATS=1
+        fi
+
+        if [ "${SKIP_PG:-}" = "1" ] && [ "${SKIP_NATS:-}" = "1" ]; then
+          echo ""
+          echo "✓ Using spot-canvas-app infrastructure. Nothing to start."
+          exit 0
+        fi
+
+        # Start only the services that aren't already running
+        SERVICES=""
+        [ "${SKIP_PG:-}" != "1" ] && SERVICES="$SERVICES postgres"
+        [ "${SKIP_NATS:-}" != "1" ] && SERVICES="$SERVICES nats"
+        docker compose up -d $SERVICES
+
+  infra:down:
+    desc: Stop ledger containers (does not touch spot-canvas-app)
+    cmds:
+      - docker compose down
+
+  infra:logs:
+    desc: Show container logs
+    cmds:
+      - docker compose logs -f
+
+  infra:reset:
+    desc: Stop containers and remove volumes (clean slate)
+    cmds:
+      - docker compose down -v
+
+  infra:status:
+    desc: Show which database and NATS containers are running
+    cmds:
+      - |
+        echo "=== PostgreSQL ==="
+        docker ps --filter "publish=5432" --format "table {{`{{.Names}}`}}\t{{`{{.Status}}`}}\t{{`{{.Ports}}`}}" 2>/dev/null || echo "  (none)"
+        echo ""
+        echo "=== NATS ==="
+        docker ps --filter "publish=4222" --format "table {{`{{.Names}}`}}\t{{`{{.Status}}`}}\t{{`{{.Ports}}`}}" 2>/dev/null || echo "  (none)"
+
+  db:logs:
+    desc: Show PostgreSQL logs
+    cmds:
+      - docker compose logs -f postgres
+
+  nats:logs:
+    desc: Show NATS logs
+    cmds:
+      - docker compose logs -f nats
+
+  # ─── Docker ────────────────────────────────────────────────
+
+  docker:build:
+    desc: Build Docker image locally
+    cmds:
+      - docker build -t ledger:latest .
+
+  docker:run:
+    desc: Run Docker image locally (connects to host network)
+    cmds:
+      - >-
+        docker run --rm
+        --network host
+        -e DATABASE_URL=postgres://spot:spot@localhost:5432/spot_canvas?sslmode=disable
+        -e NATS_URLS=nats://localhost:4222
+        ledger:latest
+
+  # ─── Deployment ────────────────────────────────────────────
+
+  deploy:staging:
+    desc: Deploy to staging Cloud Run via Cloud Build
+    cmds:
+      - gcloud builds submit --substitutions=_ENV=staging
+
+  deploy:production:
+    desc: Deploy to production Cloud Run via Cloud Build
+    cmds:
+      - gcloud builds submit --substitutions=_ENV=production
+
+  # ─── Utilities ─────────────────────────────────────────────
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf bin/
+      - rm -f coverage.out
+
+  deps:
+    desc: Download and tidy dependencies
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  env:
+    desc: Create .env from .env.example
+    status:
+      - test -f .env
+    cmds:
+      - cp .env.example .env
+      - echo "Created .env from .env.example — edit as needed"
+
+  setup:
+    desc: Full local setup (env + deps + infra + run)
+    cmds:
+      - task: env
+      - task: deps
+      - task: infra:up
+      - echo ""
+      - echo "Infrastructure is starting. Wait a few seconds, then run:"
+      - echo "  task dev"
