@@ -37,7 +37,7 @@ func (r *Repository) upsertSpotPosition(ctx context.Context, tx pgx.Tx, trade *d
 		// No existing position — create new one
 		if trade.Side == domain.SideBuy {
 			costBasis := trade.Quantity*trade.Price + trade.Fee
-			posID := fmt.Sprintf("%s-%s-spot", trade.AccountID, trade.Symbol)
+			posID := fmt.Sprintf("%s-%s-spot-%d", trade.AccountID, trade.Symbol, trade.Timestamp.Unix())
 			_, err := tx.Exec(ctx, `
 				INSERT INTO ledger_positions (id, account_id, symbol, market_type, side,
 					quantity, avg_entry_price, cost_basis, realized_pnl, status, opened_at)
@@ -120,7 +120,7 @@ func (r *Repository) upsertFuturesPosition(ctx context.Context, tx pgx.Tx, trade
 		}
 
 		costBasis := trade.Quantity * trade.Price
-		posID := fmt.Sprintf("%s-%s-futures", trade.AccountID, trade.Symbol)
+		posID := fmt.Sprintf("%s-%s-futures-%d", trade.AccountID, trade.Symbol, trade.Timestamp.Unix())
 		_, err := tx.Exec(ctx, `
 			INSERT INTO ledger_positions (id, account_id, symbol, market_type, side,
 				quantity, avg_entry_price, cost_basis, realized_pnl,
@@ -322,36 +322,14 @@ func (r *Repository) RebuildPositions(ctx context.Context, accountID string) err
 		return fmt.Errorf("delete positions: %w", err)
 	}
 
-	// Replay all trades in chronological order
-	rows, err := tx.Query(ctx, `
-		SELECT trade_id, account_id, symbol, side, quantity, price, fee, fee_currency,
-			market_type, timestamp, ingested_at, cost_basis, realized_pnl,
-			leverage, margin, liquidation_price, funding_fee
-		FROM ledger_trades
-		WHERE account_id = $1
-		ORDER BY timestamp ASC, trade_id ASC
-	`, accountID)
+	// Collect all trades first (must close rows before using tx for upserts)
+	trades, err := r.TradesForRebuild(ctx, tx, accountID)
 	if err != nil {
-		return fmt.Errorf("query trades for rebuild: %w", err)
+		return fmt.Errorf("load trades for rebuild: %w", err)
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var t domain.Trade
-		var side, marketType string
-		err := rows.Scan(
-			&t.TradeID, &t.AccountID, &t.Symbol, &side, &t.Quantity, &t.Price,
-			&t.Fee, &t.FeeCurrency, &marketType, &t.Timestamp, &t.IngestedAt,
-			&t.CostBasis, &t.RealizedPnL,
-			&t.Leverage, &t.Margin, &t.LiquidationPrice, &t.FundingFee,
-		)
-		if err != nil {
-			return fmt.Errorf("scan trade for rebuild: %w", err)
-		}
-		t.Side = domain.Side(side)
-		t.MarketType = domain.MarketType(marketType)
-
-		if err := r.UpsertPosition(ctx, tx, &t); err != nil {
+	for i := range trades {
+		if err := r.UpsertPosition(ctx, tx, &trades[i]); err != nil {
 			return fmt.Errorf("upsert position during rebuild: %w", err)
 		}
 	}
