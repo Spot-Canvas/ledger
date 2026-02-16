@@ -145,6 +145,8 @@ Run `task` or `task --list` to see all available tasks:
 
 ## API Endpoints
 
+**Base URL (staging):** `https://spot-canvas-ledger-staging-970386657060.europe-west3.run.app`
+
 Query endpoints are read-only (GET). The import endpoint (POST) allows bulk-loading historic trades.
 
 ### Health
@@ -268,7 +270,7 @@ Bulk-import historic trades. Trades are validated up front (the entire batch is 
 **Example with curl:**
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/import \
+curl -X POST https://spot-canvas-ledger-staging-970386657060.europe-west3.run.app/api/v1/import \
   -H "Content-Type: application/json" \
   -d '{"trades": [{"trade_id":"t-001","account_id":"live","symbol":"BTC-USD","side":"buy","quantity":0.5,"price":40000,"fee":20,"fee_currency":"USD","market_type":"spot","timestamp":"2024-06-01T10:00:00Z"}]}'
 ```

@@ -176,14 +176,29 @@ tasks:
   # ─── Deployment ────────────────────────────────────────────
 
   deploy:staging:
-    desc: Deploy to staging Cloud Run via Cloud Build
+    desc: Build, push, and deploy ledger to staging Cloud Run
     cmds:
-      - gcloud builds submit --substitutions=_ENV=staging
+      - ./scripts/deploy.sh --project spotcanvas-staging --env staging --tag staging
+
+  deploy:staging:dry-run:
+    desc: Preview staging deployment commands
+    cmds:
+      - ./scripts/deploy.sh --project spotcanvas-staging --env staging --tag staging --dry-run
+
+  deploy:staging:cloudbuild:
+    desc: Deploy to staging via Cloud Build (remote build)
+    cmds:
+      - gcloud builds submit --project=spotcanvas-staging --substitutions=_ENV=staging
 
   deploy:production:
-    desc: Deploy to production Cloud Run via Cloud Build
+    desc: Build, push, and deploy ledger to production Cloud Run
     cmds:
-      - gcloud builds submit --substitutions=_ENV=production
+      - ./scripts/deploy.sh --project spotcanvas-production --env production --tag latest
+
+  deploy:production:cloudbuild:
+    desc: Deploy to production via Cloud Build (remote build)
+    cmds:
+      - gcloud builds submit --project=spotcanvas-production --substitutions=_ENV=production
 
   # ─── Utilities ─────────────────────────────────────────────
 
