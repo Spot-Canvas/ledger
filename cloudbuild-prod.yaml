@@ -1,0 +1,76 @@
+# Cloud Build configuration for production deployment to signalngn-prod
+# Usage: gcloud builds submit --project=signalngn-prod --config=cloudbuild-prod.yaml
+#
+# Deploys with ENFORCE_AUTH=false initially.
+# Switch to ENFORCE_AUTH=true via: gcloud run services update signalngn-ledger ...
+
+substitutions:
+  _REGION: europe-west1
+  _SERVICE_NAME: signalngn-ledger
+  _ARTIFACT_REGISTRY: europe-west1-docker.pkg.dev/signalngn-prod/signalngn
+  _IMAGE_NAME: ledger
+  _CLOUDSQL_INSTANCE: signalngn-prod:europe-west1:signalngn-db
+  _MEMORY: "256Mi"
+  _CPU: "1"
+  _MIN_INSTANCES: "0"
+  _MAX_INSTANCES: "3"
+  _CONCURRENCY: "80"
+  _ENFORCE_AUTH: "false"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+steps:
+  # Step 1: Build the Docker image
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - -t
+      - ${_ARTIFACT_REGISTRY}/${_IMAGE_NAME}:${SHORT_SHA}
+      - -t
+      - ${_ARTIFACT_REGISTRY}/${_IMAGE_NAME}:latest
+      - .
+
+  # Step 2: Push the image to Artifact Registry
+  - name: gcr.io/cloud-builders/docker
+    id: push
+    args:
+      - push
+      - --all-tags
+      - ${_ARTIFACT_REGISTRY}/${_IMAGE_NAME}
+    waitFor:
+      - build
+
+  # Step 3: Deploy to Cloud Run
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --project=${PROJECT_ID}
+      - --region=${_REGION}
+      - --image=${_ARTIFACT_REGISTRY}/${_IMAGE_NAME}:${SHORT_SHA}
+      - --platform=managed
+      - --memory=${_MEMORY}
+      - --cpu=${_CPU}
+      - --min-instances=${_MIN_INSTANCES}
+      - --max-instances=${_MAX_INSTANCES}
+      - --concurrency=${_CONCURRENCY}
+      - --timeout=300s
+      - --port=8080
+      - --allow-unauthenticated
+      - --add-cloudsql-instances=${_CLOUDSQL_INSTANCE}
+      - --set-env-vars=ENVIRONMENT=production,LOG_LEVEL=info,CLOUDSQL_INSTANCE=${_CLOUDSQL_INSTANCE},DB_NAME=spot_canvas,DB_USER=spot,ENFORCE_AUTH=${_ENFORCE_AUTH}
+      - --set-secrets=DB_PASSWORD=signalngn-prod-db-password:latest,NATS_URLS=signalngn-prod-nats-url:latest,NATS_CREDS=signalngn-prod-nats-creds:latest
+    waitFor:
+      - push
+
+images:
+  - ${_ARTIFACT_REGISTRY}/${_IMAGE_NAME}:${SHORT_SHA}
+  - ${_ARTIFACT_REGISTRY}/${_IMAGE_NAME}:latest
+
+timeout: 600s

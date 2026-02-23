@@ -6,23 +6,34 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog/log"
 
+	"ledger/internal/api/middleware"
 	"ledger/internal/store"
 )
 
 // Server holds the HTTP server dependencies.
 type Server struct {
-	repo *store.Repository
-	nc   *nats.Conn
+	repo        *store.Repository
+	userRepo    *store.UserRepository
+	nc          *nats.Conn
+	enforceAuth bool
+	defaultTID  uuid.UUID
 }
 
 // NewServer creates a new API server.
-func NewServer(repo *store.Repository, nc *nats.Conn) *Server {
-	return &Server{repo: repo, nc: nc}
+func NewServer(repo *store.Repository, userRepo *store.UserRepository, nc *nats.Conn, enforceAuth bool, defaultTenantID uuid.UUID) *Server {
+	return &Server{
+		repo:        repo,
+		userRepo:    userRepo,
+		nc:          nc,
+		enforceAuth: enforceAuth,
+		defaultTID:  defaultTenantID,
+	}
 }
 
 // Router returns the configured chi router.
@@ -30,22 +41,28 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 
 	// Middleware
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	r.Use(chiMiddleware.RequestID)
+	r.Use(chiMiddleware.RealIP)
 	r.Use(requestLogger)
-	r.Use(middleware.Recoverer)
+	r.Use(chiMiddleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Content-Type"},
+		AllowedHeaders: []string{"Accept", "Content-Type", "Authorization"},
 		MaxAge:         300,
 	}))
 
-	// Health check
+	// Health check — no auth required
 	r.Get("/health", s.handleHealth)
 
-	// API v1 routes
+	// Auth resolve endpoint — protected by AuthMiddleware
+	authMW := middleware.NewAuthMiddleware(s.userRepo, s.enforceAuth, s.defaultTID)
+	r.With(authMW).Get("/auth/resolve", s.handleAuthResolve)
+
+	// API v1 routes — all protected by AuthMiddleware
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(authMW)
+
 		// Import endpoint (POST)
 		r.Post("/import", s.handleImportTrades)
 
@@ -63,7 +80,7 @@ func (s *Server) Router() http.Handler {
 func requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		ww := chiMiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		next.ServeHTTP(ww, r)
 		log.Debug().
 			Str("method", r.Method).

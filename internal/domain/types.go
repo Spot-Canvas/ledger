@@ -2,6 +2,8 @@ package domain
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // AccountType represents the type of trading account.
@@ -72,6 +74,7 @@ type Account struct {
 
 // Trade represents a single trade execution.
 type Trade struct {
+	TenantID    uuid.UUID  `json:"tenant_id"`
 	TradeID     string     `json:"trade_id"`
 	AccountID   string     `json:"account_id"`
 	Symbol      string     `json:"symbol"`

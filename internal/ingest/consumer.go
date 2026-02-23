@@ -109,7 +109,7 @@ func (c *Consumer) handleMessage(ctx context.Context, msg jetstream.Msg) error {
 		return nil
 	}
 
-	// Validate
+	// Validate (includes tenant_id presence and UUID format check)
 	if err := event.Validate(); err != nil {
 		c.logger.Warn().Err(err).
 			Str("trade_id", event.TradeID).
@@ -119,7 +119,7 @@ func (c *Consumer) handleMessage(ctx context.Context, msg jetstream.Msg) error {
 		return nil
 	}
 
-	// Convert to domain trade
+	// Convert to domain trade (sets trade.TenantID)
 	trade, err := event.ToDomain()
 	if err != nil {
 		c.logger.Warn().Err(err).
@@ -129,32 +129,35 @@ func (c *Consumer) handleMessage(ctx context.Context, msg jetstream.Msg) error {
 		return nil
 	}
 
-	// Infer account type from subject or default to "live"
+	tenantID := trade.TenantID
+
+	// Infer account type from account ID
 	accountType := domain.InferAccountType(event.AccountID)
 
-	// Ensure account exists
-	_, err = c.repo.GetOrCreateAccount(ctx, trade.AccountID, accountType)
+	// Ensure account exists (scoped to tenant)
+	_, err = c.repo.GetOrCreateAccount(ctx, tenantID, trade.AccountID, accountType)
 	if err != nil {
 		return fmt.Errorf("get or create account: %w", err)
 	}
 
 	// Get avg entry price for cost basis calculation on sells
 	if trade.Side == domain.SideSell {
-		avgPrice, err := c.repo.GetAvgEntryPrice(ctx, trade.AccountID, trade.Symbol, trade.MarketType)
+		avgPrice, err := c.repo.GetAvgEntryPrice(ctx, tenantID, trade.AccountID, trade.Symbol, trade.MarketType)
 		if err != nil {
 			return fmt.Errorf("get avg entry price: %w", err)
 		}
 		store.CostBasisForTrade(trade, avgPrice)
 	}
 
-	// Insert trade and update position atomically
-	inserted, err := c.repo.InsertTradeAndUpdatePosition(ctx, trade)
+	// Insert trade and update position atomically (scoped to tenant)
+	inserted, err := c.repo.InsertTradeAndUpdatePosition(ctx, tenantID, trade)
 	if err != nil {
 		return fmt.Errorf("insert trade and update position: %w", err)
 	}
 
 	if inserted {
 		c.logger.Info().
+			Str("tenant_id", tenantID.String()).
 			Str("trade_id", trade.TradeID).
 			Str("account_id", trade.AccountID).
 			Str("symbol", trade.Symbol).
@@ -164,6 +167,7 @@ func (c *Consumer) handleMessage(ctx context.Context, msg jetstream.Msg) error {
 			Msg("ingested trade")
 	} else {
 		c.logger.Debug().
+			Str("tenant_id", tenantID.String()).
 			Str("trade_id", trade.TradeID).
 			Msg("duplicate trade, skipped")
 	}

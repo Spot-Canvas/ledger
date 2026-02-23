@@ -30,6 +30,9 @@ type Config struct {
 	// Logging
 	LogLevel    string
 	Environment string
+
+	// Auth
+	EnforceAuth bool
 }
 
 // Load reads configuration from environment variables with .env support.
@@ -49,6 +52,7 @@ func Load() (*Config, error) {
 		NATSCreds:        os.Getenv("NATS_CREDS"),
 		LogLevel:         getEnv("LOG_LEVEL", "info"),
 		Environment:      getEnv("ENVIRONMENT", "development"),
+		EnforceAuth:      os.Getenv("ENFORCE_AUTH") != "false",
 	}
 
 	// Build Cloud SQL connection string if instance is specified

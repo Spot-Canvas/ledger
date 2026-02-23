@@ -12,9 +12,18 @@ tasks:
   # ─── Build & Run ───────────────────────────────────────────
 
   build:
-    desc: Build ledger binary
+    desc: Build ledger server binary
     cmds:
       - go build -o {{.BINARY}} ./cmd/ledger
+
+  build:cli:
+    desc: Build ledger CLI binary (cmd/ledger-cli → bin/ledger-cli)
+    cmds:
+      - go build -o bin/ledger-cli ./cmd/ledger-cli
+
+  build:all:
+    desc: Build all binaries (server + CLI)
+    deps: [build, build:cli]
 
   run:
     desc: Run ledger service (build + run)

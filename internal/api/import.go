@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"ledger/internal/api/middleware"
 	"ledger/internal/domain"
 	"ledger/internal/ingest"
 	"ledger/internal/store"
@@ -35,6 +36,8 @@ type ImportResponse struct {
 }
 
 func (s *Server) handleImportTrades(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromContext(r.Context())
+
 	var req ImportRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON: %v", err))
@@ -51,9 +54,13 @@ func (s *Server) handleImportTrades(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate all trades up front before inserting any
+	// Validate all trades up front before inserting any.
+	// For the import endpoint the tenant_id comes from the auth context,
+	// so we don't require it in the event payload — we inject it below.
 	for i, event := range req.Trades {
-		if err := event.Validate(); err != nil {
+		// Temporarily inject tenantID so Validate() passes the tenant_id check.
+		req.Trades[i].TenantID = tenantID.String()
+		if err := req.Trades[i].Validate(); err != nil {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("trade[%d] (%s): %v", i, event.TradeID, err))
 			return
 		}
@@ -85,9 +92,12 @@ func (s *Server) handleImportTrades(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Ensure account exists
+		// Override TenantID from context (import always uses the caller's tenant)
+		trade.TenantID = tenantID
+
+		// Ensure account exists (scoped to tenant)
 		accountType := domain.InferAccountType(event.AccountID)
-		if _, err := s.repo.GetOrCreateAccount(ctx, trade.AccountID, accountType); err != nil {
+		if _, err := s.repo.GetOrCreateAccount(ctx, tenantID, trade.AccountID, accountType); err != nil {
 			result.Status = "error"
 			result.Error = fmt.Sprintf("account setup failed: %v", err)
 			resp.Errors++
@@ -97,7 +107,7 @@ func (s *Server) handleImportTrades(w http.ResponseWriter, r *http.Request) {
 
 		// Calculate cost basis for sells
 		if trade.Side == domain.SideSell {
-			avgPrice, err := s.repo.GetAvgEntryPrice(ctx, trade.AccountID, trade.Symbol, trade.MarketType)
+			avgPrice, err := s.repo.GetAvgEntryPrice(ctx, tenantID, trade.AccountID, trade.Symbol, trade.MarketType)
 			if err != nil {
 				result.Status = "error"
 				result.Error = fmt.Sprintf("cost basis lookup failed: %v", err)
@@ -108,7 +118,7 @@ func (s *Server) handleImportTrades(w http.ResponseWriter, r *http.Request) {
 			store.CostBasisForTrade(trade, avgPrice)
 		}
 
-		inserted, err := s.repo.InsertTradeAndUpdatePosition(ctx, trade)
+		inserted, err := s.repo.InsertTradeAndUpdatePosition(ctx, tenantID, trade)
 		if err != nil {
 			result.Status = "error"
 			result.Error = err.Error()
@@ -131,8 +141,10 @@ func (s *Server) handleImportTrades(w http.ResponseWriter, r *http.Request) {
 	// Rebuild positions for affected accounts to ensure consistency
 	// (historic imports may arrive out of order relative to existing trades)
 	for accountID := range affectedAccounts {
-		if err := s.repo.RebuildPositions(ctx, accountID); err != nil {
-			log.Error().Err(err).Str("account_id", accountID).
+		if err := s.repo.RebuildPositions(ctx, tenantID, accountID); err != nil {
+			log.Error().Err(err).
+				Str("tenant_id", tenantID.String()).
+				Str("account_id", accountID).
 				Msg("failed to rebuild positions after import")
 		}
 	}

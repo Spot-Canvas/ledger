@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"ledger/internal/domain"
 )
 
@@ -45,8 +47,8 @@ type OrderListResult struct {
 	NextCursor string         `json:"next_cursor,omitempty"`
 }
 
-// ListOrders returns orders for an account with filters and cursor-based pagination.
-func (r *Repository) ListOrders(ctx context.Context, accountID string, filter OrderFilter) (*OrderListResult, error) {
+// ListOrders returns orders for a tenant/account with filters and cursor-based pagination.
+func (r *Repository) ListOrders(ctx context.Context, tenantID uuid.UUID, accountID string, filter OrderFilter) (*OrderListResult, error) {
 	if filter.Limit <= 0 {
 		filter.Limit = 50
 	}
@@ -57,6 +59,10 @@ func (r *Repository) ListOrders(ctx context.Context, accountID string, filter Or
 	var conditions []string
 	var args []interface{}
 	argIdx := 1
+
+	conditions = append(conditions, fmt.Sprintf("tenant_id = $%d", argIdx))
+	args = append(args, tenantID)
+	argIdx++
 
 	conditions = append(conditions, fmt.Sprintf("account_id = $%d", argIdx))
 	args = append(args, accountID)

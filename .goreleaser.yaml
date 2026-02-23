@@ -1,0 +1,62 @@
+version: 2
+
+project_name: ledger
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ledger-cli
+    main: ./cmd/ledger-cli
+    binary: ledger
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: linux
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: ledger-cli
+    ids: [ledger-cli]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "Merge pull request"
+      - "Merge branch"
+
+release:
+  github:
+    owner: Spot-Canvas
+    name: ledger
+
+homebrew_casks:
+  - name: ledger
+    ids: [ledger-cli]
+    repository:
+      owner: Spot-Canvas
+      name: ledger
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/Spot-Canvas/ledger"
+    description: "Spot Canvas ledger CLI — query accounts, positions, trades, and import historic data"
+    license: "MIT"
+    binaries: [ledger]

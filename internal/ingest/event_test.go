@@ -4,8 +4,11 @@ import (
 	"testing"
 )
 
+const testTenantID = "00000000-0000-0000-0000-000000000001"
+
 func TestTradeEventValidation_Valid(t *testing.T) {
 	event := TradeEvent{
+		TenantID:    testTenantID,
 		TradeID:     "t-001",
 		AccountID:   "live",
 		Symbol:      "BTC-USD",
@@ -28,6 +31,7 @@ func TestTradeEventValidation_ValidFutures(t *testing.T) {
 	margin := 5000.0
 	liqPrice := 45000.0
 	event := TradeEvent{
+		TenantID:         testTenantID,
 		TradeID:          "t-002",
 		AccountID:        "live",
 		Symbol:           "BTC-USD",
@@ -48,6 +52,67 @@ func TestTradeEventValidation_ValidFutures(t *testing.T) {
 	}
 }
 
+func TestTradeEventValidation_MissingTenantID(t *testing.T) {
+	event := TradeEvent{
+		TradeID:     "t-001",
+		AccountID:   "live",
+		Symbol:      "BTC-USD",
+		Side:        "buy",
+		Quantity:    1,
+		Price:       50000,
+		FeeCurrency: "USD",
+		MarketType:  "spot",
+		Timestamp:   "2025-01-15T10:00:00Z",
+	}
+	err := event.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing tenant_id, got nil")
+	}
+	if !contains(err.Error(), "tenant_id") {
+		t.Fatalf("expected tenant_id error, got: %v", err)
+	}
+}
+
+func TestTradeEventValidation_NonUUIDTenantID(t *testing.T) {
+	event := TradeEvent{
+		TenantID:    "not-a-uuid",
+		TradeID:     "t-001",
+		AccountID:   "live",
+		Symbol:      "BTC-USD",
+		Side:        "buy",
+		Quantity:    1,
+		Price:       50000,
+		FeeCurrency: "USD",
+		MarketType:  "spot",
+		Timestamp:   "2025-01-15T10:00:00Z",
+	}
+	err := event.Validate()
+	if err == nil {
+		t.Fatal("expected error for non-UUID tenant_id, got nil")
+	}
+	if !contains(err.Error(), "tenant_id") {
+		t.Fatalf("expected tenant_id error, got: %v", err)
+	}
+}
+
+func TestTradeEventValidation_ValidUUIDTenantID(t *testing.T) {
+	event := TradeEvent{
+		TenantID:    "12345678-1234-1234-1234-123456789abc",
+		TradeID:     "t-001",
+		AccountID:   "live",
+		Symbol:      "BTC-USD",
+		Side:        "buy",
+		Quantity:    1,
+		Price:       50000,
+		FeeCurrency: "USD",
+		MarketType:  "spot",
+		Timestamp:   "2025-01-15T10:00:00Z",
+	}
+	if err := event.Validate(); err != nil {
+		t.Fatalf("expected valid event with UUID tenant_id, got error: %v", err)
+	}
+}
+
 func TestTradeEventValidation_MissingFields(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -56,37 +121,37 @@ func TestTradeEventValidation_MissingFields(t *testing.T) {
 	}{
 		{
 			name:  "missing trade_id",
-			event: TradeEvent{AccountID: "live", Symbol: "BTC-USD", Side: "buy", Quantity: 1, Price: 50000, FeeCurrency: "USD", MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
+			event: TradeEvent{TenantID: testTenantID, AccountID: "live", Symbol: "BTC-USD", Side: "buy", Quantity: 1, Price: 50000, FeeCurrency: "USD", MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
 			want:  "missing required field: trade_id",
 		},
 		{
 			name:  "missing account_id",
-			event: TradeEvent{TradeID: "t-1", Symbol: "BTC-USD", Side: "buy", Quantity: 1, Price: 50000, FeeCurrency: "USD", MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
+			event: TradeEvent{TenantID: testTenantID, TradeID: "t-1", Symbol: "BTC-USD", Side: "buy", Quantity: 1, Price: 50000, FeeCurrency: "USD", MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
 			want:  "missing required field: account_id",
 		},
 		{
 			name:  "missing symbol",
-			event: TradeEvent{TradeID: "t-1", AccountID: "live", Side: "buy", Quantity: 1, Price: 50000, FeeCurrency: "USD", MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
+			event: TradeEvent{TenantID: testTenantID, TradeID: "t-1", AccountID: "live", Side: "buy", Quantity: 1, Price: 50000, FeeCurrency: "USD", MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
 			want:  "missing required field: symbol",
 		},
 		{
 			name:  "missing fee_currency",
-			event: TradeEvent{TradeID: "t-1", AccountID: "live", Symbol: "BTC-USD", Side: "buy", Quantity: 1, Price: 50000, MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
+			event: TradeEvent{TenantID: testTenantID, TradeID: "t-1", AccountID: "live", Symbol: "BTC-USD", Side: "buy", Quantity: 1, Price: 50000, MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
 			want:  "missing required field: fee_currency",
 		},
 		{
 			name:  "missing timestamp",
-			event: TradeEvent{TradeID: "t-1", AccountID: "live", Symbol: "BTC-USD", Side: "buy", Quantity: 1, Price: 50000, FeeCurrency: "USD", MarketType: "spot"},
+			event: TradeEvent{TenantID: testTenantID, TradeID: "t-1", AccountID: "live", Symbol: "BTC-USD", Side: "buy", Quantity: 1, Price: 50000, FeeCurrency: "USD", MarketType: "spot"},
 			want:  "missing required field: timestamp",
 		},
 		{
 			name:  "zero quantity",
-			event: TradeEvent{TradeID: "t-1", AccountID: "live", Symbol: "BTC-USD", Side: "buy", Quantity: 0, Price: 50000, FeeCurrency: "USD", MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
+			event: TradeEvent{TenantID: testTenantID, TradeID: "t-1", AccountID: "live", Symbol: "BTC-USD", Side: "buy", Quantity: 0, Price: 50000, FeeCurrency: "USD", MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
 			want:  "quantity must be positive",
 		},
 		{
 			name:  "zero price",
-			event: TradeEvent{TradeID: "t-1", AccountID: "live", Symbol: "BTC-USD", Side: "buy", Quantity: 1, Price: 0, FeeCurrency: "USD", MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
+			event: TradeEvent{TenantID: testTenantID, TradeID: "t-1", AccountID: "live", Symbol: "BTC-USD", Side: "buy", Quantity: 1, Price: 0, FeeCurrency: "USD", MarketType: "spot", Timestamp: "2025-01-15T10:00:00Z"},
 			want:  "price must be positive",
 		},
 	}
@@ -106,6 +171,7 @@ func TestTradeEventValidation_MissingFields(t *testing.T) {
 
 func TestTradeEventValidation_InvalidMarketType(t *testing.T) {
 	event := TradeEvent{
+		TenantID:    testTenantID,
 		TradeID:     "t-001",
 		AccountID:   "live",
 		Symbol:      "BTC-USD",
@@ -129,6 +195,7 @@ func TestTradeEventValidation_InvalidMarketType(t *testing.T) {
 
 func TestTradeEventValidation_InvalidSide(t *testing.T) {
 	event := TradeEvent{
+		TenantID:    testTenantID,
 		TradeID:     "t-001",
 		AccountID:   "live",
 		Symbol:      "BTC-USD",
@@ -152,6 +219,7 @@ func TestTradeEventValidation_InvalidSide(t *testing.T) {
 
 func TestTradeEventToDomain(t *testing.T) {
 	event := TradeEvent{
+		TenantID:    testTenantID,
 		TradeID:     "t-001",
 		AccountID:   "live",
 		Symbol:      "BTC-USD",
@@ -175,6 +243,9 @@ func TestTradeEventToDomain(t *testing.T) {
 	if trade.CostBasis != 25025 { // 0.5 * 50000 + 25
 		t.Errorf("expected cost_basis 25025, got %f", trade.CostBasis)
 	}
+	if trade.TenantID.String() != testTenantID {
+		t.Errorf("expected tenant_id %s, got %s", testTenantID, trade.TenantID)
+	}
 }
 
 func TestTradeEventToDomain_WithMetadata(t *testing.T) {
@@ -185,6 +256,7 @@ func TestTradeEventToDomain_WithMetadata(t *testing.T) {
 	takeProfit := 55000.0
 
 	event := TradeEvent{
+		TenantID:    testTenantID,
 		TradeID:     "t-003",
 		AccountID:   "live",
 		Symbol:      "BTC-USD",
@@ -226,6 +298,7 @@ func TestTradeEventToDomain_WithMetadata(t *testing.T) {
 
 func TestTradeEventToDomain_WithoutMetadata(t *testing.T) {
 	event := TradeEvent{
+		TenantID:    testTenantID,
 		TradeID:     "t-004",
 		AccountID:   "live",
 		Symbol:      "BTC-USD",
@@ -267,6 +340,7 @@ func TestTradeEventValidation_WithMetadata(t *testing.T) {
 	strategy := "macd-rsi-v2"
 	confidence := 0.85
 	event := TradeEvent{
+		TenantID:    testTenantID,
 		TradeID:     "t-005",
 		AccountID:   "live",
 		Symbol:      "BTC-USD",
@@ -289,6 +363,7 @@ func TestTradeEventValidation_WithMetadata(t *testing.T) {
 func TestTradeEventToDomain_ExitReason(t *testing.T) {
 	exitReason := "stop loss hit"
 	event := TradeEvent{
+		TenantID:    testTenantID,
 		TradeID:     "t-006",
 		AccountID:   "live",
 		Symbol:      "BTC-USD",

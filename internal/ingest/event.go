@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"ledger/internal/domain"
 )
 
 // TradeEvent is the JSON structure for trade events received via NATS.
 type TradeEvent struct {
+	TenantID    string  `json:"tenant_id"`
 	TradeID     string  `json:"trade_id"`
 	AccountID   string  `json:"account_id"`
 	Symbol      string  `json:"symbol"`
@@ -37,6 +40,12 @@ type TradeEvent struct {
 
 // Validate checks that the trade event has all required fields and valid values.
 func (e *TradeEvent) Validate() error {
+	if e.TenantID == "" {
+		return fmt.Errorf("missing required field: tenant_id")
+	}
+	if _, err := uuid.Parse(e.TenantID); err != nil {
+		return fmt.Errorf("invalid tenant_id: must be a valid UUID, got %q", e.TenantID)
+	}
 	if e.TradeID == "" {
 		return fmt.Errorf("missing required field: trade_id")
 	}
@@ -75,12 +84,18 @@ func (e *TradeEvent) Validate() error {
 
 // ToDomain converts a TradeEvent to a domain Trade.
 func (e *TradeEvent) ToDomain() (*domain.Trade, error) {
+	tenantID, err := uuid.Parse(e.TenantID)
+	if err != nil {
+		return nil, fmt.Errorf("parse tenant_id: %w", err)
+	}
+
 	ts, err := time.Parse(time.RFC3339, e.Timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("parse timestamp: %w", err)
 	}
 
 	trade := &domain.Trade{
+		TenantID:         tenantID,
 		TradeID:          e.TradeID,
 		AccountID:        e.AccountID,
 		Symbol:           e.Symbol,

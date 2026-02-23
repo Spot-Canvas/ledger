@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"ledger/internal/api/middleware"
 	"ledger/internal/store"
 )
 
@@ -33,8 +34,17 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// handleAuthResolve returns the resolved tenant ID for the authenticated caller.
+func (s *Server) handleAuthResolve(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromContext(r.Context())
+	writeJSON(w, http.StatusOK, map[string]string{
+		"tenant_id": tenantID.String(),
+	})
+}
+
 func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
-	accounts, err := s.repo.ListAccounts(r.Context())
+	tenantID := middleware.TenantIDFromContext(r.Context())
+	accounts, err := s.repo.ListAccounts(r.Context(), tenantID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list accounts")
 		return
@@ -43,9 +53,10 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePortfolioSummary(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromContext(r.Context())
 	accountID := chi.URLParam(r, "accountId")
 
-	exists, err := s.repo.AccountExists(r.Context(), accountID)
+	exists, err := s.repo.AccountExists(r.Context(), tenantID, accountID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to check account")
 		return
@@ -55,7 +66,7 @@ func (s *Server) handlePortfolioSummary(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	summary, err := s.repo.GetPortfolioSummary(r.Context(), accountID)
+	summary, err := s.repo.GetPortfolioSummary(r.Context(), tenantID, accountID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to get portfolio summary")
 		return
@@ -64,6 +75,7 @@ func (s *Server) handlePortfolioSummary(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleListPositions(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromContext(r.Context())
 	accountID := chi.URLParam(r, "accountId")
 	status := r.URL.Query().Get("status")
 	if status == "" {
@@ -76,7 +88,7 @@ func (s *Server) handleListPositions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	positions, err := s.repo.ListPositions(r.Context(), accountID, status)
+	positions, err := s.repo.ListPositions(r.Context(), tenantID, accountID, status)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list positions")
 		return
@@ -85,6 +97,7 @@ func (s *Server) handleListPositions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromContext(r.Context())
 	accountID := chi.URLParam(r, "accountId")
 	q := r.URL.Query()
 
@@ -122,7 +135,7 @@ func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
 		filter.End = &t
 	}
 
-	result, err := s.repo.ListTrades(r.Context(), accountID, filter)
+	result, err := s.repo.ListTrades(r.Context(), tenantID, accountID, filter)
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid cursor") {
 			writeError(w, http.StatusBadRequest, "invalid cursor")
@@ -135,6 +148,7 @@ func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromContext(r.Context())
 	accountID := chi.URLParam(r, "accountId")
 	q := r.URL.Query()
 
@@ -153,7 +167,7 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 		filter.Limit = limit
 	}
 
-	result, err := s.repo.ListOrders(r.Context(), accountID, filter)
+	result, err := s.repo.ListOrders(r.Context(), tenantID, accountID, filter)
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid cursor") {
 			writeError(w, http.StatusBadRequest, "invalid cursor")

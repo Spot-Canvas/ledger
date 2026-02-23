@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
@@ -21,6 +22,9 @@ import (
 // - NATS running on NATS_URLS (default: nats://localhost:4222)
 //
 // Run with: go test -tags=integration ./internal/ingest/ -v
+
+// defaultTestTenantID is the tenant used for integration tests.
+var defaultTestTenantID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
 func TestIngestionFlow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -66,13 +70,14 @@ func TestIngestionFlow(t *testing.T) {
 	// Wait a moment for consumer to be ready
 	time.Sleep(time.Second)
 
-	// Publish a trade event
+	// Publish a trade event (must include tenant_id)
 	js, err := jetstream.New(nc)
 	if err != nil {
 		t.Fatalf("create jetstream: %v", err)
 	}
 
 	event := ingest.TradeEvent{
+		TenantID:    defaultTestTenantID.String(),
 		TradeID:     "integration-test-" + time.Now().Format("20060102150405"),
 		AccountID:   "test-account",
 		Symbol:      "BTC-USD",
@@ -98,8 +103,8 @@ func TestIngestionFlow(t *testing.T) {
 	// Wait for processing
 	time.Sleep(2 * time.Second)
 
-	// Verify trade in DB
-	result, err := repo.ListTrades(ctx, "test-account", store.TradeFilter{Limit: 10})
+	// Verify trade in DB (scoped to default test tenant)
+	result, err := repo.ListTrades(ctx, defaultTestTenantID, "test-account", store.TradeFilter{Limit: 10})
 	if err != nil {
 		t.Fatalf("list trades: %v", err)
 	}
@@ -121,8 +126,8 @@ func TestIngestionFlow(t *testing.T) {
 		t.Error("trade not found in database after ingestion")
 	}
 
-	// Verify position was created
-	positions, err := repo.ListPositions(ctx, "test-account", "open")
+	// Verify position was created (scoped to default test tenant)
+	positions, err := repo.ListPositions(ctx, defaultTestTenantID, "test-account", "open")
 	if err != nil {
 		t.Fatalf("list positions: %v", err)
 	}

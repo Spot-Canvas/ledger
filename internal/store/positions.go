@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"ledger/internal/domain"
@@ -19,15 +20,15 @@ func (r *Repository) UpsertPosition(ctx context.Context, tx pgx.Tx, trade *domai
 }
 
 func (r *Repository) upsertSpotPosition(ctx context.Context, tx pgx.Tx, trade *domain.Trade) error {
-	// Look for existing open position
+	// Look for existing open position scoped to tenant
 	var pos domain.Position
 	var side, status string
 	err := tx.QueryRow(ctx, `
 		SELECT id, account_id, symbol, market_type, side, quantity, avg_entry_price,
 			cost_basis, realized_pnl, status, opened_at
 		FROM ledger_positions
-		WHERE account_id = $1 AND symbol = $2 AND market_type = 'spot' AND status = 'open'
-	`, trade.AccountID, trade.Symbol).Scan(
+		WHERE tenant_id = $1 AND account_id = $2 AND symbol = $3 AND market_type = 'spot' AND status = 'open'
+	`, trade.TenantID, trade.AccountID, trade.Symbol).Scan(
 		&pos.ID, &pos.AccountID, &pos.Symbol, &pos.MarketType, &side,
 		&pos.Quantity, &pos.AvgEntryPrice, &pos.CostBasis, &pos.RealizedPnL,
 		&status, &pos.OpenedAt,
@@ -39,11 +40,11 @@ func (r *Repository) upsertSpotPosition(ctx context.Context, tx pgx.Tx, trade *d
 			costBasis := trade.Quantity*trade.Price + trade.Fee
 			posID := fmt.Sprintf("%s-%s-spot-%d", trade.AccountID, trade.Symbol, trade.Timestamp.Unix())
 			_, err := tx.Exec(ctx, `
-				INSERT INTO ledger_positions (id, account_id, symbol, market_type, side,
+				INSERT INTO ledger_positions (tenant_id, id, account_id, symbol, market_type, side,
 					quantity, avg_entry_price, cost_basis, realized_pnl, status, opened_at,
 					stop_loss, take_profit, confidence)
-				VALUES ($1, $2, $3, 'spot', 'long', $4, $5, $6, 0, 'open', $7, $8, $9, $10)
-			`, posID, trade.AccountID, trade.Symbol,
+				VALUES ($1, $2, $3, $4, 'spot', 'long', $5, $6, $7, 0, 'open', $8, $9, $10, $11)
+			`, trade.TenantID, posID, trade.AccountID, trade.Symbol,
 				trade.Quantity, trade.Price, costBasis, trade.Timestamp,
 				trade.StopLoss, trade.TakeProfit, trade.Confidence)
 			return err
@@ -102,15 +103,15 @@ func (r *Repository) upsertSpotPosition(ctx context.Context, tx pgx.Tx, trade *d
 }
 
 func (r *Repository) upsertFuturesPosition(ctx context.Context, tx pgx.Tx, trade *domain.Trade) error {
-	// Look for existing open futures position
+	// Look for existing open futures position scoped to tenant
 	var pos domain.Position
 	var side, status string
 	err := tx.QueryRow(ctx, `
 		SELECT id, account_id, symbol, market_type, side, quantity, avg_entry_price,
 			cost_basis, realized_pnl, leverage, margin, liquidation_price, status, opened_at
 		FROM ledger_positions
-		WHERE account_id = $1 AND symbol = $2 AND market_type = 'futures' AND status = 'open'
-	`, trade.AccountID, trade.Symbol).Scan(
+		WHERE tenant_id = $1 AND account_id = $2 AND symbol = $3 AND market_type = 'futures' AND status = 'open'
+	`, trade.TenantID, trade.AccountID, trade.Symbol).Scan(
 		&pos.ID, &pos.AccountID, &pos.Symbol, &pos.MarketType, &side,
 		&pos.Quantity, &pos.AvgEntryPrice, &pos.CostBasis, &pos.RealizedPnL,
 		&pos.Leverage, &pos.Margin, &pos.LiquidationPrice, &status, &pos.OpenedAt,
@@ -128,12 +129,12 @@ func (r *Repository) upsertFuturesPosition(ctx context.Context, tx pgx.Tx, trade
 		costBasis := trade.Quantity * trade.Price
 		posID := fmt.Sprintf("%s-%s-futures-%d", trade.AccountID, trade.Symbol, trade.Timestamp.Unix())
 		_, err := tx.Exec(ctx, `
-			INSERT INTO ledger_positions (id, account_id, symbol, market_type, side,
+			INSERT INTO ledger_positions (tenant_id, id, account_id, symbol, market_type, side,
 				quantity, avg_entry_price, cost_basis, realized_pnl,
 				leverage, margin, liquidation_price, status, opened_at,
 				stop_loss, take_profit, confidence)
-			VALUES ($1, $2, $3, 'futures', $4, $5, $6, $7, 0, $8, $9, $10, 'open', $11, $12, $13, $14)
-		`, posID, trade.AccountID, trade.Symbol, string(posSide),
+			VALUES ($1, $2, $3, $4, 'futures', $5, $6, $7, $8, 0, $9, $10, $11, 'open', $12, $13, $14, $15)
+		`, trade.TenantID, posID, trade.AccountID, trade.Symbol, string(posSide),
 			trade.Quantity, trade.Price, costBasis,
 			trade.Leverage, trade.Margin, trade.LiquidationPrice, trade.Timestamp,
 			trade.StopLoss, trade.TakeProfit, trade.Confidence)
@@ -209,7 +210,8 @@ func (r *Repository) upsertFuturesPosition(ctx context.Context, tx pgx.Tx, trade
 }
 
 // InsertTradeAndUpdatePosition wraps InsertTrade + UpsertPosition in a single transaction.
-func (r *Repository) InsertTradeAndUpdatePosition(ctx context.Context, trade *domain.Trade) (bool, error) {
+// tenantID is used for all tenant-scoped sub-calls.
+func (r *Repository) InsertTradeAndUpdatePosition(ctx context.Context, tenantID uuid.UUID, trade *domain.Trade) (bool, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("begin transaction: %w", err)
@@ -234,8 +236,8 @@ func (r *Repository) InsertTradeAndUpdatePosition(ctx context.Context, trade *do
 	return inserted, nil
 }
 
-// ListPositions returns positions for an account with optional status filter.
-func (r *Repository) ListPositions(ctx context.Context, accountID string, status string) ([]domain.Position, error) {
+// ListPositions returns positions for a tenant/account with optional status filter.
+func (r *Repository) ListPositions(ctx context.Context, tenantID uuid.UUID, accountID string, status string) ([]domain.Position, error) {
 	var query string
 	var args []interface{}
 
@@ -246,10 +248,10 @@ func (r *Repository) ListPositions(ctx context.Context, accountID string, status
 				status, opened_at, closed_at,
 				exit_price, exit_reason, stop_loss, take_profit, confidence
 			FROM ledger_positions
-			WHERE account_id = $1
+			WHERE tenant_id = $1 AND account_id = $2
 			ORDER BY opened_at DESC
 		`
-		args = []interface{}{accountID}
+		args = []interface{}{tenantID, accountID}
 	} else {
 		query = `
 			SELECT id, account_id, symbol, market_type, side, quantity, avg_entry_price,
@@ -257,10 +259,10 @@ func (r *Repository) ListPositions(ctx context.Context, accountID string, status
 				status, opened_at, closed_at,
 				exit_price, exit_reason, stop_loss, take_profit, confidence
 			FROM ledger_positions
-			WHERE account_id = $1 AND status = $2
+			WHERE tenant_id = $1 AND account_id = $2 AND status = $3
 			ORDER BY opened_at DESC
 		`
-		args = []interface{}{accountID, status}
+		args = []interface{}{tenantID, accountID, status}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -301,18 +303,18 @@ type PortfolioSummary struct {
 	TotalRealizedPnL float64           `json:"total_realized_pnl"`
 }
 
-// GetPortfolioSummary returns open positions and aggregate realized P&L for an account.
-func (r *Repository) GetPortfolioSummary(ctx context.Context, accountID string) (*PortfolioSummary, error) {
-	positions, err := r.ListPositions(ctx, accountID, "open")
+// GetPortfolioSummary returns open positions and aggregate realized P&L for a tenant/account.
+func (r *Repository) GetPortfolioSummary(ctx context.Context, tenantID uuid.UUID, accountID string) (*PortfolioSummary, error) {
+	positions, err := r.ListPositions(ctx, tenantID, accountID, "open")
 	if err != nil {
 		return nil, err
 	}
 
-	// Get total realized P&L across all positions (open and closed)
+	// Get total realized P&L across all positions (open and closed) for this tenant/account
 	var totalPnL float64
 	err = r.pool.QueryRow(ctx,
-		"SELECT COALESCE(SUM(realized_pnl), 0) FROM ledger_positions WHERE account_id = $1",
-		accountID,
+		"SELECT COALESCE(SUM(realized_pnl), 0) FROM ledger_positions WHERE tenant_id = $1 AND account_id = $2",
+		tenantID, accountID,
 	).Scan(&totalPnL)
 	if err != nil {
 		return nil, fmt.Errorf("get total pnl: %w", err)
@@ -324,22 +326,22 @@ func (r *Repository) GetPortfolioSummary(ctx context.Context, accountID string) 
 	}, nil
 }
 
-// RebuildPositions deletes all positions for an account and replays trades chronologically.
-func (r *Repository) RebuildPositions(ctx context.Context, accountID string) error {
+// RebuildPositions deletes all positions for a tenant/account and replays trades chronologically.
+func (r *Repository) RebuildPositions(ctx context.Context, tenantID uuid.UUID, accountID string) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	// Delete all positions
-	_, err = tx.Exec(ctx, "DELETE FROM ledger_positions WHERE account_id = $1", accountID)
+	// Delete all positions for this tenant/account
+	_, err = tx.Exec(ctx, "DELETE FROM ledger_positions WHERE tenant_id = $1 AND account_id = $2", tenantID, accountID)
 	if err != nil {
 		return fmt.Errorf("delete positions: %w", err)
 	}
 
 	// Collect all trades first (must close rows before using tx for upserts)
-	trades, err := r.TradesForRebuild(ctx, tx, accountID)
+	trades, err := r.TradesForRebuild(ctx, tx, tenantID, accountID)
 	if err != nil {
 		return fmt.Errorf("load trades for rebuild: %w", err)
 	}
@@ -353,17 +355,17 @@ func (r *Repository) RebuildPositions(ctx context.Context, accountID string) err
 	return tx.Commit(ctx)
 }
 
-// TradesForRebuild returns all trades for an account in chronological order.
-func (r *Repository) TradesForRebuild(ctx context.Context, tx pgx.Tx, accountID string) ([]domain.Trade, error) {
+// TradesForRebuild returns all trades for a tenant/account in chronological order.
+func (r *Repository) TradesForRebuild(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, accountID string) ([]domain.Trade, error) {
 	rows, err := tx.Query(ctx, `
 		SELECT trade_id, account_id, symbol, side, quantity, price, fee, fee_currency,
 			market_type, timestamp, ingested_at, cost_basis, realized_pnl,
 			leverage, margin, liquidation_price, funding_fee,
 			strategy, entry_reason, exit_reason, confidence, stop_loss, take_profit
 		FROM ledger_trades
-		WHERE account_id = $1
+		WHERE tenant_id = $1 AND account_id = $2
 		ORDER BY timestamp ASC, trade_id ASC
-	`, accountID)
+	`, tenantID, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("query trades: %w", err)
 	}
@@ -385,6 +387,7 @@ func (r *Repository) TradesForRebuild(ctx context.Context, tx pgx.Tx, accountID 
 		}
 		t.Side = domain.Side(sideStr)
 		t.MarketType = domain.MarketType(mtStr)
+		t.TenantID = tenantID
 		trades = append(trades, t)
 	}
 	return trades, nil
@@ -402,12 +405,12 @@ func CostBasisForTrade(trade *domain.Trade, avgEntryPrice float64) {
 }
 
 // GetAvgEntryPrice returns the average entry price for an open position, or 0 if none exists.
-func (r *Repository) GetAvgEntryPrice(ctx context.Context, accountID, symbol string, marketType domain.MarketType) (float64, error) {
+func (r *Repository) GetAvgEntryPrice(ctx context.Context, tenantID uuid.UUID, accountID, symbol string, marketType domain.MarketType) (float64, error) {
 	var avgPrice float64
 	err := r.pool.QueryRow(ctx, `
 		SELECT COALESCE(avg_entry_price, 0) FROM ledger_positions
-		WHERE account_id = $1 AND symbol = $2 AND market_type = $3 AND status = 'open'
-	`, accountID, symbol, string(marketType)).Scan(&avgPrice)
+		WHERE tenant_id = $1 AND account_id = $2 AND symbol = $3 AND market_type = $4 AND status = 'open'
+	`, tenantID, accountID, symbol, string(marketType)).Scan(&avgPrice)
 	if err == pgx.ErrNoRows {
 		return 0, nil
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"ledger/internal/domain"
@@ -16,14 +17,14 @@ import (
 func (r *Repository) InsertTrade(ctx context.Context, tx pgx.Tx, trade *domain.Trade) (bool, error) {
 	tag, err := tx.Exec(ctx, `
 		INSERT INTO ledger_trades (
-			trade_id, account_id, symbol, side, quantity, price, fee, fee_currency,
+			tenant_id, trade_id, account_id, symbol, side, quantity, price, fee, fee_currency,
 			market_type, timestamp, ingested_at, cost_basis, realized_pnl,
 			leverage, margin, liquidation_price, funding_fee,
 			strategy, entry_reason, exit_reason, confidence, stop_loss, take_profit
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 		ON CONFLICT (trade_id) DO NOTHING
 	`,
-		trade.TradeID, trade.AccountID, trade.Symbol, string(trade.Side),
+		trade.TenantID, trade.TradeID, trade.AccountID, trade.Symbol, string(trade.Side),
 		trade.Quantity, trade.Price, trade.Fee, trade.FeeCurrency,
 		string(trade.MarketType), trade.Timestamp, trade.IngestedAt,
 		trade.CostBasis, trade.RealizedPnL,
@@ -53,8 +54,8 @@ type TradeListResult struct {
 	NextCursor string         `json:"next_cursor,omitempty"`
 }
 
-// ListTrades returns trades for an account with filters and cursor-based pagination.
-func (r *Repository) ListTrades(ctx context.Context, accountID string, filter TradeFilter) (*TradeListResult, error) {
+// ListTrades returns trades for a tenant/account with filters and cursor-based pagination.
+func (r *Repository) ListTrades(ctx context.Context, tenantID uuid.UUID, accountID string, filter TradeFilter) (*TradeListResult, error) {
 	if filter.Limit <= 0 {
 		filter.Limit = 50
 	}
@@ -65,6 +66,10 @@ func (r *Repository) ListTrades(ctx context.Context, accountID string, filter Tr
 	var conditions []string
 	var args []interface{}
 	argIdx := 1
+
+	conditions = append(conditions, fmt.Sprintf("tenant_id = $%d", argIdx))
+	args = append(args, tenantID)
+	argIdx++
 
 	conditions = append(conditions, fmt.Sprintf("account_id = $%d", argIdx))
 	args = append(args, accountID)
@@ -145,6 +150,7 @@ func (r *Repository) ListTrades(ctx context.Context, accountID string, filter Tr
 		}
 		t.Side = domain.Side(side)
 		t.MarketType = domain.MarketType(marketType)
+		t.TenantID = tenantID
 		trades = append(trades, t)
 	}
 

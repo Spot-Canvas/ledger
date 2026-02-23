@@ -8,10 +8,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"ledger/internal/api"
+	"ledger/internal/api/middleware"
 	"ledger/internal/config"
 	"ledger/internal/ingest"
 	"ledger/internal/store"
@@ -38,6 +40,7 @@ func main() {
 	log.Info().
 		Str("port", cfg.HTTPPort).
 		Str("environment", cfg.Environment).
+		Bool("enforce_auth", cfg.EnforceAuth).
 		Msg("starting ledger service")
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -65,6 +68,9 @@ func main() {
 	}
 	log.Info().Msg("migrations complete")
 
+	// Initialise UserRepository (shares the same pool — same DB as spot-canvas-app)
+	userRepo := store.NewUserRepository(repo.Pool())
+
 	// Connect to NATS
 	nc, err := ingest.ConnectNATS(cfg.NATSURLs, cfg.NATSCredsFile, cfg.NATSCreds)
 	if err != nil {
@@ -82,7 +88,8 @@ func main() {
 	}()
 
 	// Start HTTP server
-	srv := api.NewServer(repo, nc)
+	defaultTenantID := uuid.MustParse(middleware.DefaultTenantID.String())
+	srv := api.NewServer(repo, userRepo, nc, cfg.EnforceAuth, defaultTenantID)
 	httpServer := &http.Server{
 		Addr:    ":" + cfg.HTTPPort,
 		Handler: srv.Router(),

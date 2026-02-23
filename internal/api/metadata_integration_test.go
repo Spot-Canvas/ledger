@@ -44,7 +44,8 @@ func setupMetadataTest(t *testing.T) (*store.Repository, *httptest.Server, func(
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	srv := api.NewServer(repo, nil)
+	// ENFORCE_AUTH=false → default tenant used for all requests
+	srv := api.NewServer(repo, nil, nil, false, defaultTenantID)
 	ts := httptest.NewServer(srv.Router())
 
 	cleanup := func() {
@@ -429,7 +430,7 @@ func TestMetadata_RebuildPreservesMetadata(t *testing.T) {
 
 	// Rebuild positions
 	ctx := context.Background()
-	if err := repo.RebuildPositions(ctx, accountID); err != nil {
+	if err := repo.RebuildPositions(ctx, defaultTenantID, accountID); err != nil {
 		t.Fatalf("rebuild positions: %v", err)
 	}
 
