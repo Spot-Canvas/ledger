@@ -3,7 +3,7 @@ cask "ledger" do
   name "ledger"
   desc "Spot Canvas ledger CLI — query accounts, positions, trades, and import historic data"
   homepage "https://github.com/Spot-Canvas/ledger"
-  version "0.1.4"
+  version "0.1.5"
 
   livecheck do
     skip "Auto-generated on release."
@@ -14,18 +14,18 @@ cask "ledger" do
   on_macos do
     on_intel do
       url "https://github.com/Spot-Canvas/ledger/releases/download/v#{version}/ledger_darwin_amd64.tar.gz"
-      sha256 "00f4709020f278a5b9973bb5597f745a9f39af64e19ca6c9021608afab029662"
+      sha256 "8a23376020412d06887d2156b035dcfeacc2bb7e0e4f8db750e5833c28345a18"
     end
     on_arm do
       url "https://github.com/Spot-Canvas/ledger/releases/download/v#{version}/ledger_darwin_arm64.tar.gz"
-      sha256 "1f4150278027a0157b89f3edd7284d73fc507dd4c9c828ab6076fce2cbaf3367"
+      sha256 "16b8119a466fca289bd9a9a3cdf2330b3ea293fb3d3d96dd2b8928e6d8c7d8fd"
     end
   end
 
   on_linux do
     on_intel do
       url "https://github.com/Spot-Canvas/ledger/releases/download/v#{version}/ledger_linux_amd64.tar.gz"
-      sha256 "2318afeca6d1e1e9b30a604285765584a0c275103d377b938e8181887d3e0b90"
+      sha256 "06b479855cbd51570b9f16ab48571b2d260556d7469b54a54c8b95e4bb9f7618"
     end
   end
 
