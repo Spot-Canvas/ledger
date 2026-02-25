@@ -147,6 +147,22 @@ func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (s *Server) handleAccountStats(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromContext(r.Context())
+	accountID := chi.URLParam(r, "accountId")
+
+	stats, err := s.repo.GetAccountStats(r.Context(), tenantID, accountID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get account stats")
+		return
+	}
+	if stats == nil {
+		writeError(w, http.StatusNotFound, "account not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
 func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 	tenantID := middleware.TenantIDFromContext(r.Context())
 	accountID := chi.URLParam(r, "accountId")

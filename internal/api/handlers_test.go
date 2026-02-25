@@ -65,6 +65,7 @@ func TestRouterHasCorrectGETRoutes(t *testing.T) {
 		"/api/v1/accounts/test/positions",
 		"/api/v1/accounts/test/trades",
 		"/api/v1/accounts/test/orders",
+		"/api/v1/accounts/test/stats",
 	}
 
 	for _, path := range paths {
@@ -77,6 +78,35 @@ func TestRouterHasCorrectGETRoutes(t *testing.T) {
 		}
 		if w.Code == http.StatusMethodNotAllowed {
 			t.Errorf("GET %s: got 405, GET should be allowed", path)
+		}
+	}
+}
+
+func TestAccountStatsRoute_RequiresAuth(t *testing.T) {
+	// With enforceAuth=true, no Authorization header → 401
+	srv := &Server{nc: nil, enforceAuth: true}
+	router := srv.Router()
+
+	req := httptest.NewRequest("GET", "/api/v1/accounts/paper/stats", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 without auth header, got %d", w.Code)
+	}
+}
+
+func TestAccountStatsRoute_MethodNotAllowed(t *testing.T) {
+	srv := &Server{nc: nil}
+	router := srv.Router()
+
+	for _, method := range []string{"POST", "PUT", "DELETE", "PATCH"} {
+		req := httptest.NewRequest(method, "/api/v1/accounts/paper/stats", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s /api/v1/accounts/paper/stats: expected 405, got %d", method, w.Code)
 		}
 	}
 }

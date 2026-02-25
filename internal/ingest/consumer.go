@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/rs/zerolog"
@@ -165,6 +166,7 @@ func (c *Consumer) handleMessage(ctx context.Context, msg jetstream.Msg) error {
 			Float64("quantity", trade.Quantity).
 			Float64("price", trade.Price).
 			Msg("ingested trade")
+		publishTradeNotification(c.nc, tenantID, trade.AccountID, trade.TradeID)
 	} else {
 		c.logger.Debug().
 			Str("tenant_id", tenantID.String()).
@@ -173,6 +175,25 @@ func (c *Consumer) handleMessage(ctx context.Context, msg jetstream.Msg) error {
 	}
 
 	return nil
+}
+
+// publishTradeNotification publishes a lightweight JSON notification to
+// ledger.trades.notify.<tenantID> on NATS core (fire-and-forget).
+// A publish error is logged at warn level and never propagated.
+func publishTradeNotification(nc *nats.Conn, tenantID uuid.UUID, accountID, tradeID string) {
+	subject := "ledger.trades.notify." + tenantID.String()
+	payload, err := json.Marshal(map[string]string{
+		"tenant_id":  tenantID.String(),
+		"account_id": accountID,
+		"trade_id":   tradeID,
+	})
+	if err != nil {
+		log.Warn().Err(err).Str("trade_id", tradeID).Msg("failed to marshal trade notification")
+		return
+	}
+	if err := nc.Publish(subject, payload); err != nil {
+		log.Warn().Err(err).Str("subject", subject).Str("trade_id", tradeID).Msg("failed to publish trade notification")
+	}
 }
 
 // ConnectNATS connects to NATS with retry logic, matching spot-canvas-app patterns.

@@ -10,6 +10,64 @@ import (
 	"github.com/Spot-Canvas/ledger/internal/domain"
 )
 
+// AccountStats holds all-time aggregate statistics for an account.
+type AccountStats struct {
+	TotalTrades      int     `json:"total_trades"`
+	ClosedTrades     int     `json:"closed_trades"`
+	WinCount         int     `json:"win_count"`
+	LossCount        int     `json:"loss_count"`
+	WinRate          float64 `json:"win_rate"`
+	TotalRealizedPnL float64 `json:"total_realized_pnl"`
+	OpenPositions    int     `json:"open_positions"`
+}
+
+// GetAccountStats returns aggregate statistics for the given (tenantID, accountID).
+// Returns nil if the account does not exist.
+func (r *Repository) GetAccountStats(ctx context.Context, tenantID uuid.UUID, accountID string) (*AccountStats, error) {
+	// Check account exists first
+	exists, err := r.AccountExists(ctx, tenantID, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("check account: %w", err)
+	}
+	if !exists {
+		return nil, nil
+	}
+
+	var stats AccountStats
+
+	// Single conditional aggregation query over positions.
+	// Each position is a round-trip (entry + exit combined), matching how
+	// the dashboard counts trades. Closed positions have realized_pnl set.
+	err = r.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*) FILTER (WHERE status = 'closed')                       AS closed_trades,
+			COUNT(*) FILTER (WHERE status = 'closed' AND realized_pnl > 0)  AS win_count,
+			COUNT(*) FILTER (WHERE status = 'closed' AND realized_pnl <= 0) AS loss_count,
+			COALESCE(SUM(realized_pnl) FILTER (WHERE status = 'closed'), 0) AS total_realized_pnl,
+			COUNT(*) FILTER (WHERE status = 'open')                         AS open_positions
+		FROM ledger_positions
+		WHERE tenant_id = $1 AND account_id = $2
+	`, tenantID, accountID).Scan(
+		&stats.ClosedTrades,
+		&stats.WinCount,
+		&stats.LossCount,
+		&stats.TotalRealizedPnL,
+		&stats.OpenPositions,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get position stats: %w", err)
+	}
+
+	stats.TotalTrades = stats.ClosedTrades + stats.OpenPositions
+
+	// Compute WinRate in Go
+	if stats.ClosedTrades > 0 {
+		stats.WinRate = float64(stats.WinCount) / float64(stats.ClosedTrades)
+	}
+
+	return &stats, nil
+}
+
 // GetOrCreateAccount looks up an account by (tenantID, id). If it doesn't exist, creates it.
 func (r *Repository) GetOrCreateAccount(ctx context.Context, tenantID uuid.UUID, id string, accountType domain.AccountType) (*domain.Account, error) {
 	var acct domain.Account

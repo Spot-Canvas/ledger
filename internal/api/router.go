@@ -68,6 +68,7 @@ func (s *Server) Router() http.Handler {
 
 		// Read-only query endpoints (GET)
 		r.Get("/accounts", s.handleListAccounts)
+		r.Get("/accounts/{accountId}/stats", s.handleAccountStats)
 		r.Get("/accounts/{accountId}/portfolio", s.handlePortfolioSummary)
 		r.Get("/accounts/{accountId}/positions", s.handleListPositions)
 		r.Get("/accounts/{accountId}/trades", s.handleListTrades)
