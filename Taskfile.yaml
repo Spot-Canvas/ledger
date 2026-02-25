@@ -36,7 +36,7 @@ tasks:
     desc: Run ledger service directly with go run
     dotenv: [".env"]
     cmds:
-      - go run ./cmd/ledgerd
+      - ENFORCE_AUTH=false HTTP_PORT=8080 go run ./cmd/ledgerd
 
   # ─── Testing ───────────────────────────────────────────────
 
@@ -202,12 +202,12 @@ tasks:
   deploy:production:
     desc: Build, push, and deploy ledger to production Cloud Run
     cmds:
-      - ./scripts/deploy.sh --project spotcanvas-production --env production --tag latest
+      - ./scripts/deploy.sh --project signalngn-prod --env production --tag latest
 
   deploy:production:cloudbuild:
     desc: Deploy to production via Cloud Build (remote build)
     cmds:
-      - gcloud builds submit --project=spotcanvas-production --substitutions=_ENV=production
+      - gcloud builds submit --project=signalngn-prod --substitutions=_ENV=production
 
   # ─── Utilities ─────────────────────────────────────────────
 
