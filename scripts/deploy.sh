@@ -93,7 +93,11 @@ ARTIFACT_REGISTRY="${REGION}-docker.pkg.dev/${PROJECT}/${REPOSITORY}"
 IMAGE_URL="${ARTIFACT_REGISTRY}/${IMAGE_NAME}"
 GIT_COMMIT=$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-CLOUDSQL_INSTANCE="${PROJECT}:${REGION}:spot-canvas-db"
+if [[ "$ENV" == "staging" ]]; then
+    CLOUDSQL_INSTANCE="${PROJECT}:${REGION}:spot-canvas-db"
+else
+    CLOUDSQL_INSTANCE="${PROJECT}:${REGION}:signalngn-db"
+fi
 
 echo ""
 log_info "======================================"
