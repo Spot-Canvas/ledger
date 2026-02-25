@@ -14,18 +14,18 @@ cask "ledger" do
   on_macos do
     on_intel do
       url "https://github.com/Spot-Canvas/ledger/releases/download/v#{version}/ledger_darwin_amd64.tar.gz"
-      sha256 "9ec7f49bd81aca91a4a5334e5c567ac8a55eb803c69e44525f07b35adf1720b1"
+      sha256 "6c31772ac4d9a6f371a0bf6cb64d4ff5af315cfa10b853814078e532f3983b65"
     end
     on_arm do
       url "https://github.com/Spot-Canvas/ledger/releases/download/v#{version}/ledger_darwin_arm64.tar.gz"
-      sha256 "2436b9b335fdafd90e22f6f793db173d923219b508e4b31983ac43f86b143b54"
+      sha256 "37858afd9134d637c263482fae8e5e57e0892de990d78bf8086c427486fb8b04"
     end
   end
 
   on_linux do
     on_intel do
       url "https://github.com/Spot-Canvas/ledger/releases/download/v#{version}/ledger_linux_amd64.tar.gz"
-      sha256 "ea5572125cd553bae8c5b8849983744ec1e4b2e6388c1dc85f7c224c3e3b2cd2"
+      sha256 "ffd683f77044794733d5c181d388bbce83a455b468ebf0b8a0751e271d274c08"
     end
   end
 
