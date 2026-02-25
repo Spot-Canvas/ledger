@@ -80,7 +80,7 @@ fi
 if [[ "$ENV" == "staging" ]]; then
     SERVICE_NAME="spot-canvas-ledger-staging"
     SECRET_PREFIX="spot-canvas-staging"
-    REPOSITORY="${REPOSITORY:-ledger}"
+    REPOSITORY="${REPOSITORY:-spot-canvas}"
 else
     SERVICE_NAME="spot-canvas-ledger"
     SECRET_PREFIX="signalngn-prod"
