@@ -157,10 +157,23 @@ func (c *Client) PostRaw(rawURL string, body []byte) (int, []byte, error) {
 	return c.doRaw(http.MethodPost, rawURL, body)
 }
 
+// Delete performs a DELETE request and unmarshals the response.
+func (c *Client) Delete(rawURL string, out any) error {
+	return c.do(http.MethodDelete, rawURL, nil, out)
+}
+
 // isNotFound returns true if the error is an HTTP 404.
 func isNotFound(err error) bool {
 	if e, ok := err.(*apiError); ok {
 		return e.StatusCode == http.StatusNotFound
+	}
+	return false
+}
+
+// isConflict returns true if the error is an HTTP 409.
+func isConflict(err error) bool {
+	if e, ok := err.(*apiError); ok {
+		return e.StatusCode == http.StatusConflict
 	}
 	return false
 }

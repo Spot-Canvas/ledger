@@ -297,6 +297,54 @@ var tradesAddCmd = &cobra.Command{
 	},
 }
 
+// ── trades delete ─────────────────────────────────────────────────────────────
+
+var tradesDeleteCmd = &cobra.Command{
+	Use:   "delete <trade-id>",
+	Short: "Delete a trade by ID",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		tradeID := args[0]
+		confirm, _ := cmd.Flags().GetBool("confirm")
+		useJSON, _ := cmd.Flags().GetBool("json")
+
+		if !confirm {
+			return fmt.Errorf("use --confirm to delete a trade")
+		}
+
+		c := newClient()
+		endpoint := c.ledgerURL("/api/v1/trades/" + tradeID)
+
+		var result map[string]string
+		err := c.Delete(endpoint, &result)
+		if err != nil {
+			if isNotFound(err) {
+				return fmt.Errorf("trade not found")
+			}
+			if isConflict(err) {
+				// Extract server message from the API error body.
+				if e, ok := err.(*apiError); ok {
+					var body map[string]string
+					if jsonErr := json.Unmarshal([]byte(e.Body), &body); jsonErr == nil {
+						if msg, ok := body["error"]; ok {
+							return fmt.Errorf("%s", msg)
+						}
+					}
+				}
+				return fmt.Errorf("trade contributes to an open position and cannot be deleted")
+			}
+			return err
+		}
+
+		if useJSON {
+			return PrintJSON(result)
+		}
+
+		fmt.Printf("deleted trade %s\n", tradeID)
+		return nil
+	},
+}
+
 func init() {
 	// trades list flags
 	tradesListCmd.Flags().StringVar(&tradesSymbol, "symbol", "", "Filter by symbol (e.g. BTC-USD)")
@@ -335,7 +383,11 @@ func init() {
 	tradesAddCmd.Flags().Float64Var(&addLiquidationPrice, "liquidation-price", 0, "Liquidation price (futures)")
 	tradesAddCmd.Flags().Float64Var(&addFundingFee, "funding-fee", 0, "Funding fee (futures)")
 
+	// trades delete flags
+	tradesDeleteCmd.Flags().Bool("confirm", false, "Confirm the deletion (required)")
+
 	tradesCmd.AddCommand(tradesListCmd)
 	tradesCmd.AddCommand(tradesAddCmd)
+	tradesCmd.AddCommand(tradesDeleteCmd)
 	rootCmd.AddCommand(tradesCmd)
 }

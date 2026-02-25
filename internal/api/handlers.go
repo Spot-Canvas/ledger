@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -193,4 +194,23 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleDeleteTrade(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromContext(r.Context())
+	tradeID := chi.URLParam(r, "tradeId")
+
+	err := s.repo.DeleteTrade(r.Context(), tenantID, tradeID)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrTradeNotFound):
+			writeError(w, http.StatusNotFound, "trade not found")
+		case errors.Is(err, store.ErrTradeHasOpenPosition):
+			writeError(w, http.StatusConflict, "trade contributes to an open position and cannot be deleted")
+		default:
+			writeError(w, http.StatusInternalServerError, "failed to delete trade")
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"deleted": tradeID})
 }

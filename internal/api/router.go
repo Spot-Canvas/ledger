@@ -47,7 +47,7 @@ func (s *Server) Router() http.Handler {
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
+		AllowedMethods: []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{"Accept", "Content-Type", "Authorization"},
 		MaxAge:         300,
 	}))
@@ -65,6 +65,9 @@ func (s *Server) Router() http.Handler {
 
 		// Import endpoint (POST)
 		r.Post("/import", s.handleImportTrades)
+
+		// Trade deletion endpoint (DELETE)
+		r.Delete("/trades/{tradeId}", s.handleDeleteTrade)
 
 		// Read-only query endpoints (GET)
 		r.Get("/accounts", s.handleListAccounts)

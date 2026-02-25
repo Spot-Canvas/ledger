@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,12 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/Spot-Canvas/ledger/internal/domain"
+)
+
+// Sentinel errors for trade deletion.
+var (
+	ErrTradeNotFound        = errors.New("trade not found")
+	ErrTradeHasOpenPosition = errors.New("trade contributes to an open position and cannot be deleted")
 )
 
 // InsertTrade inserts a trade with ON CONFLICT DO NOTHING. Returns true if inserted.
@@ -187,4 +194,50 @@ func decodeCursor(cursor string) (time.Time, string, error) {
 		return time.Time{}, "", fmt.Errorf("parse timestamp: %w", err)
 	}
 	return ts, parts[1], nil
+}
+
+// DeleteTrade deletes a trade by trade ID, scoped to the given tenant.
+// Returns ErrTradeNotFound if the trade does not exist for this tenant.
+// Returns ErrTradeHasOpenPosition if the trade's account/symbol has an open position.
+func (r *Repository) DeleteTrade(ctx context.Context, tenantID uuid.UUID, tradeID string) error {
+	// First fetch the trade so we know which account/symbol to check.
+	var accountID, symbol string
+	err := r.pool.QueryRow(ctx, `
+		SELECT account_id, symbol
+		FROM ledger_trades
+		WHERE tenant_id = $1 AND trade_id = $2
+	`, tenantID, tradeID).Scan(&accountID, &symbol)
+	if err == pgx.ErrNoRows {
+		return ErrTradeNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lookup trade: %w", err)
+	}
+
+	// Check whether the account/symbol has any open position.
+	var openCount int
+	err = r.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM ledger_positions
+		WHERE tenant_id = $1 AND account_id = $2 AND symbol = $3 AND status = 'open'
+	`, tenantID, accountID, symbol).Scan(&openCount)
+	if err != nil {
+		return fmt.Errorf("check open positions: %w", err)
+	}
+	if openCount > 0 {
+		return ErrTradeHasOpenPosition
+	}
+
+	// Safe to delete.
+	tag, err := r.pool.Exec(ctx, `
+		DELETE FROM ledger_trades
+		WHERE tenant_id = $1 AND trade_id = $2
+	`, tenantID, tradeID)
+	if err != nil {
+		return fmt.Errorf("delete trade: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrTradeNotFound
+	}
+	return nil
 }

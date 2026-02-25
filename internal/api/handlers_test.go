@@ -8,6 +8,54 @@ import (
 	"testing"
 )
 
+// ── DELETE /api/v1/trades/{tradeId} ──────────────────────────────────────────
+
+func TestDeleteTradeRoute_Registered(t *testing.T) {
+	srv := &Server{nc: nil}
+	router := srv.Router()
+
+	req := httptest.NewRequest("DELETE", "/api/v1/trades/some-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Without auth enforcement the handler runs; without a real DB it will 500.
+	// What matters here is that the route IS registered (not 404 or 405).
+	if w.Code == http.StatusNotFound {
+		t.Error("DELETE /api/v1/trades/{tradeId}: got 404, route not registered")
+	}
+	if w.Code == http.StatusMethodNotAllowed {
+		t.Error("DELETE /api/v1/trades/{tradeId}: got 405, DELETE should be allowed")
+	}
+}
+
+func TestDeleteTradeRoute_RequiresAuth(t *testing.T) {
+	srv := &Server{nc: nil, enforceAuth: true}
+	router := srv.Router()
+
+	req := httptest.NewRequest("DELETE", "/api/v1/trades/some-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 without auth header, got %d", w.Code)
+	}
+}
+
+func TestDeleteTradeRoute_OtherMethodsNotAllowed(t *testing.T) {
+	srv := &Server{nc: nil}
+	router := srv.Router()
+
+	for _, method := range []string{"PUT", "PATCH", "POST"} {
+		req := httptest.NewRequest(method, "/api/v1/trades/some-id", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s /api/v1/trades/some-id: expected 405, got %d", method, w.Code)
+		}
+	}
+}
+
 func TestHealthEndpoint_NilNATS(t *testing.T) {
 	srv := &Server{
 		repo: nil,

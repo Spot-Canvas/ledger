@@ -272,6 +272,56 @@ ledger positions list --account live # list positions
 ledger import --file trades.csv      # bulk import trades from CSV
 ```
 
+## Deleting a Trade
+
+Use this **only to remove test trades** that were recorded by mistake or during testing. Do not use it to delete real trading history.
+
+A trade can only be deleted if its account/symbol has **no open position**. If the trade contributed to an open position, close the position first (record the offsetting sell/buy trade), then delete the test trades.
+
+### Via CLI
+
+```bash
+ledger trades delete <trade-id> --confirm
+```
+
+The `--confirm` flag is required to prevent accidental deletion.
+
+**Examples:**
+
+```bash
+# Delete a specific test trade
+ledger trades delete bot-1234567890 --confirm
+
+# Delete and get JSON response
+ledger trades delete bot-1234567890 --confirm --json
+```
+
+**Exit codes and messages:**
+
+| Situation | Output | Exit code |
+|-----------|--------|-----------|
+| Success | `deleted trade <id>` | 0 |
+| Missing `--confirm` | `use --confirm to delete a trade` | non-zero |
+| Trade not found | `trade not found` | non-zero |
+| Trade has open position | server error message | non-zero |
+
+### Via REST API
+
+```bash
+curl -s -X DELETE \
+  "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/trades/<trade-id>" \
+  -H "Authorization: Bearer ${LEDGER_API_KEY}"
+```
+
+**Responses:**
+
+| Status | Meaning |
+|--------|---------|
+| `200 {"deleted": "<id>"}` | Trade deleted successfully |
+| `404 {"error": "trade not found"}` | Trade doesn't exist or belongs to another tenant |
+| `409 {"error": "trade contributes to an open position and cannot be deleted"}` | Close the position first |
+| `401` | Invalid or missing API key |
+
 ## Important Notes
 
 - **Idempotent:** Submitting the same `trade_id` twice results in a `"duplicate"` — no error, no double-counting.
