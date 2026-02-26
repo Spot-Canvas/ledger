@@ -188,19 +188,27 @@ func (r *Repository) upsertFuturesPosition(ctx context.Context, tx pgx.Tx, trade
 	}
 
 	// Closing (partially or fully)
-	// P&L is computed in margin terms (account-impact), not full notional.
-	// With leverage L: margin_pnl = notional_pnl / L
-	// When leverage is unknown (nil or 0) we fall back to notional P&L (1x effective).
-	lev := 1
+	// P&L is in margin (account-impact) terms, not full notional.
+	//
+	// Scale factor priority:
+	//   1. explicit leverage on position: scale = 1 / leverage
+	//   2. margin on position:            scale = margin / cost_basis
+	//   3. margin on trade:               scale = margin / cost_basis
+	//   4. fallback:                      scale = 1 (notional = account impact, e.g. 1x)
+	scale := 1.0
 	if pos.Leverage != nil && *pos.Leverage > 1 {
-		lev = *pos.Leverage
+		scale = 1.0 / float64(*pos.Leverage)
+	} else if pos.Margin != nil && *pos.Margin > 0 && pos.CostBasis > 0 {
+		scale = *pos.Margin / pos.CostBasis
+	} else if trade.Margin != nil && *trade.Margin > 0 && pos.CostBasis > 0 {
+		scale = *trade.Margin / pos.CostBasis
 	}
 
 	var realizedPnL float64
 	if pos.Side == domain.PositionSideLong {
-		realizedPnL = (trade.Price - pos.AvgEntryPrice) * trade.Quantity / float64(lev)
+		realizedPnL = (trade.Price - pos.AvgEntryPrice) * trade.Quantity * scale
 	} else {
-		realizedPnL = (pos.AvgEntryPrice - trade.Price) * trade.Quantity / float64(lev)
+		realizedPnL = (pos.AvgEntryPrice - trade.Price) * trade.Quantity * scale
 	}
 	// Subtract fees and funding fees (already in account terms — not notional)
 	realizedPnL -= trade.Fee

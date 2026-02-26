@@ -69,13 +69,17 @@ func main() {
 	}
 	log.Info().Msg("migrations complete")
 
-	// If migration 004 was just applied (positions were truncated), rebuild all
-	// positions from trades using the corrected margin-adjusted P&L logic.
+	// If a positions-rebuild migration was just applied, replay all trades
+	// through the updated P&L logic.
+	rebuildMigrations := map[string]bool{
+		"004_rebuild_positions_margin_pnl":   true,
+		"005_rebuild_positions_margin_scale": true,
+	}
 	for _, v := range migrated {
-		if v == "004_rebuild_positions_margin_pnl" {
-			log.Info().Msg("migration 004 applied — rebuilding all positions with margin-adjusted P&L")
+		if rebuildMigrations[v] {
+			log.Info().Str("migration", v).Msg("rebuild migration applied — rebuilding all positions")
 			if err := repo.RebuildAllPositions(ctx); err != nil {
-				log.Fatal().Err(err).Msg("failed to rebuild positions after migration 004")
+				log.Fatal().Err(err).Msg("failed to rebuild positions")
 			}
 			log.Info().Msg("position rebuild complete")
 			break
