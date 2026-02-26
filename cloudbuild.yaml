@@ -52,9 +52,9 @@ steps:
         set -euo pipefail
 
         ENV="${_ENV}"
-        echo "Deploying ledger to $ENV environment..."
+        echo "Deploying ledger to $$ENV environment..."
 
-        if [[ "$ENV" == "staging" ]]; then
+        if [[ "$$ENV" == "staging" ]]; then
           SERVICE_NAME="${_SERVICE_PREFIX}-staging"
           SECRET_PREFIX="spot-canvas-staging"
         else
@@ -64,7 +64,7 @@ steps:
 
         CLOUDSQL_INSTANCE="${PROJECT_ID}:${_REGION}:spot-canvas-db"
 
-        gcloud run deploy "$SERVICE_NAME" \
+        gcloud run deploy "$$SERVICE_NAME" \
           --project="${PROJECT_ID}" \
           --region="${_REGION}" \
           --image="${_ARTIFACT_REGISTRY}/${_IMAGE_NAME}:${SHORT_SHA}" \
@@ -77,15 +77,15 @@ steps:
           --timeout=300s \
           --port=8080 \
           --allow-unauthenticated \
-          --add-cloudsql-instances="$CLOUDSQL_INSTANCE" \
-          --set-env-vars="ENVIRONMENT=$ENV,LOG_LEVEL=info,CLOUDSQL_INSTANCE=$CLOUDSQL_INSTANCE,DB_NAME=spot_canvas,DB_USER=spot" \
-          --set-secrets="DB_PASSWORD=${SECRET_PREFIX}-db-password:latest,NATS_URLS=${SECRET_PREFIX}-nats-url:latest,NATS_CREDS=${SECRET_PREFIX}-nats-creds:latest"
+          --add-cloudsql-instances="$$CLOUDSQL_INSTANCE" \
+          --set-env-vars="ENVIRONMENT=$$ENV,LOG_LEVEL=info,CLOUDSQL_INSTANCE=$$CLOUDSQL_INSTANCE,DB_NAME=spot_canvas,DB_USER=spot" \
+          --set-secrets="DB_PASSWORD=$$SECRET_PREFIX-db-password:latest,NATS_URLS=$$SECRET_PREFIX-nats-url:latest,NATS_CREDS=$$SECRET_PREFIX-nats-creds:latest"
 
-        URL=$(gcloud run services describe "$SERVICE_NAME" \
+        URL=$$(gcloud run services describe "$$SERVICE_NAME" \
           --project="${PROJECT_ID}" \
           --region="${_REGION}" \
           --format="value(status.url)" 2>/dev/null || echo "unavailable")
-        echo "Deployed to: $URL"
+        echo "Deployed to: $$URL"
     waitFor:
       - push
 
