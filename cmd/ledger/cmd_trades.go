@@ -28,6 +28,13 @@ type tradeListResult struct {
 	NextCursor string  `json:"next_cursor,omitempty"`
 }
 
+// positionListResult is used for the round-trip (default) view.
+// The position type is shared with cmd_portfolio.go.
+type positionListResult struct {
+	Positions  []position `json:"positions"`
+	NextCursor string     `json:"next_cursor,omitempty"`
+}
+
 // addTradeRequest mirrors the import payload for a single trade.
 // tenant_id is injected server-side from the auth context.
 type addTradeRequest struct {
@@ -70,6 +77,8 @@ var (
 	tradesStart      string
 	tradesEnd        string
 	tradesLimit      int
+	tradesRaw        bool
+	tradesLong       bool
 )
 
 // ── add flags ─────────────────────────────────────────────────────────────────
@@ -107,14 +116,117 @@ var tradesCmd = &cobra.Command{
 
 var tradesListCmd = &cobra.Command{
 	Use:   "list <account-id>",
-	Short: "List trades for an account",
+	Short: "List trades for an account (default: round-trip view; use --raw for individual trades)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		accountID := args[0]
 		c := newClient()
 		useJSON, _ := cmd.Flags().GetBool("json")
 
-		var allTrades []trade
+		if tradesRaw {
+			// ── raw individual-trade mode ──────────────────────────────────
+			var allTrades []trade
+			cursor := ""
+			pageSize := 50
+			if tradesLimit > 0 && tradesLimit < pageSize {
+				pageSize = tradesLimit
+			}
+
+			for {
+				q := url.Values{}
+				q.Set("limit", fmt.Sprintf("%d", pageSize))
+				if cursor != "" {
+					q.Set("cursor", cursor)
+				}
+				if tradesSymbol != "" {
+					q.Set("symbol", tradesSymbol)
+				}
+				if tradesSide != "" {
+					q.Set("side", tradesSide)
+				}
+				if tradesMarketType != "" {
+					q.Set("market_type", tradesMarketType)
+				}
+				if tradesStart != "" {
+					q.Set("start", tradesStart)
+				}
+				if tradesEnd != "" {
+					q.Set("end", tradesEnd)
+				}
+
+				endpoint := c.ledgerURL("/api/v1/accounts/"+accountID+"/trades", q)
+				var result tradeListResult
+				if err := c.Get(endpoint, &result); err != nil {
+					return err
+				}
+
+				allTrades = append(allTrades, result.Trades...)
+
+				if tradesLimit > 0 && len(allTrades) >= tradesLimit {
+					allTrades = allTrades[:tradesLimit]
+					break
+				}
+				if result.NextCursor == "" {
+					break
+				}
+				cursor = result.NextCursor
+			}
+
+			if useJSON {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(allTrades)
+			}
+
+			if tradesLong {
+				// Long view: all columns, full timestamp
+				rows := make([][]string, len(allTrades))
+				for i, t := range allTrades {
+					rows[i] = []string{
+						t.TradeID,
+						t.Symbol,
+						t.Side,
+						fmtQty(t.Quantity),
+						fmtPrice(t.Price),
+						fmtFee(t.Fee),
+						t.MarketType,
+						fmtTime(t.Timestamp),
+					}
+				}
+				PrintTable(
+					[]string{"TRADE-ID", "SYMBOL", "SIDE", "QTY", "PRICE", "FEE", "MARKET", "TIMESTAMP"},
+					rows,
+				)
+			} else {
+				// Short view (default): no trade ID, compact time (no year)
+				rows := make([][]string, len(allTrades))
+				for i, t := range allTrades {
+					rows[i] = []string{
+						t.Symbol,
+						t.Side,
+						fmtQty(t.Quantity),
+						fmtPrice(t.Price),
+						fmtFee(t.Fee),
+						t.MarketType,
+						fmtTimeShort(t.Timestamp),
+					}
+				}
+				PrintTable(
+					[]string{"SYMBOL", "SIDE", "QTY", "PRICE", "FEE", "MARKET", "TIME"},
+					rows,
+				)
+			}
+			return nil
+		}
+
+		// ── round-trip (default) mode ──────────────────────────────────────
+		// Warn if filters that only apply to raw mode were set
+		filterFlags := []string{"symbol", "side", "market-type", "start", "end"}
+		for _, f := range filterFlags {
+			if cmd.Flags().Changed(f) {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: --%s is ignored in round-trip mode (use --raw to filter individual trades)\n", f)
+			}
+		}
+
+		var allPositions []position
 		cursor := ""
 		pageSize := 50
 		if tradesLimit > 0 && tradesLimit < pageSize {
@@ -123,36 +235,38 @@ var tradesListCmd = &cobra.Command{
 
 		for {
 			q := url.Values{}
+			q.Set("status", "all")
 			q.Set("limit", fmt.Sprintf("%d", pageSize))
 			if cursor != "" {
 				q.Set("cursor", cursor)
 			}
-			if tradesSymbol != "" {
-				q.Set("symbol", tradesSymbol)
-			}
-			if tradesSide != "" {
-				q.Set("side", tradesSide)
-			}
-			if tradesMarketType != "" {
-				q.Set("market_type", tradesMarketType)
-			}
-			if tradesStart != "" {
-				q.Set("start", tradesStart)
-			}
-			if tradesEnd != "" {
-				q.Set("end", tradesEnd)
-			}
 
-			endpoint := c.ledgerURL("/api/v1/accounts/"+accountID+"/trades", q)
-			var result tradeListResult
-			if err := c.Get(endpoint, &result); err != nil {
+			endpoint := c.ledgerURL("/api/v1/accounts/"+accountID+"/positions", q)
+			statusCode, body, err := c.GetRaw(endpoint)
+			if err != nil {
 				return err
 			}
+			if statusCode < 200 || statusCode >= 300 {
+				return fmt.Errorf("API error %d: %s", statusCode, string(body))
+			}
 
-			allTrades = append(allTrades, result.Trades...)
+			// Support both new paginated shape {"positions":[...], "next_cursor":"..."}
+			// and the old bare array [...] from servers not yet updated.
+			var result positionListResult
+			if err := json.Unmarshal(body, &result); err != nil || result.Positions == nil {
+				// Try bare array fallback
+				var bare []position
+				if err2 := json.Unmarshal(body, &bare); err2 != nil {
+					return fmt.Errorf("decode positions response: %w", err)
+				}
+				result.Positions = bare
+				result.NextCursor = ""
+			}
 
-			if tradesLimit > 0 && len(allTrades) >= tradesLimit {
-				allTrades = allTrades[:tradesLimit]
+			allPositions = append(allPositions, result.Positions...)
+
+			if tradesLimit > 0 && len(allPositions) >= tradesLimit {
+				allPositions = allPositions[:tradesLimit]
 				break
 			}
 			if result.NextCursor == "" {
@@ -162,26 +276,144 @@ var tradesListCmd = &cobra.Command{
 		}
 
 		if useJSON {
-			return json.NewEncoder(cmd.OutOrStdout()).Encode(allTrades)
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(allPositions)
 		}
 
-		rows := make([][]string, len(allTrades))
-		for i, t := range allTrades {
-			rows[i] = []string{
-				t.TradeID,
-				t.Symbol,
-				t.Side,
-				fmtFloat(t.Quantity),
-				fmtFloat(t.Price),
-				fmtFloat(t.Fee),
-				t.MarketType,
-				fmtTime(t.Timestamp),
+		// Build position rows — common logic for both long and short views.
+		type posRow struct {
+			id         string
+			result     string
+			symbol     string
+			side       string
+			size       string
+			entry      string
+			exit       string
+			pnl        string
+			pnlPct     string
+			opened     string
+			openedFull string
+			closed     string
+			closedFull string
+			exitReason string
+		}
+
+		posRows := make([]posRow, len(allPositions))
+		for i, p := range allPositions {
+			result := "open"
+			if p.Status == "closed" {
+				if p.RealizedPnL > 0 {
+					result = "✓ win"
+				} else {
+					result = "✗ loss"
+				}
+			}
+
+			exit := "-"
+			pnl := "-"
+			pnlPct := "-"
+			closed := "-"
+			closedFull := "-"
+			exitReason := "-"
+
+			if p.Status == "closed" {
+				if p.ExitPrice != nil {
+					exit = fmtPrice(*p.ExitPrice)
+				}
+				pnl = fmtFee(p.RealizedPnL)
+				if p.CostBasis != 0 {
+					pnlPct = fmt.Sprintf("%.2f%%", p.RealizedPnL/p.CostBasis*100)
+				}
+				if p.ClosedAt != nil {
+					closed = fmtTimeShort(*p.ClosedAt)
+					closedFull = fmtTime(*p.ClosedAt)
+				}
+				if p.ExitReason != nil {
+					exitReason = *p.ExitReason
+				}
+			}
+
+			posRows[i] = posRow{
+				id:         p.ID,
+				result:     result,
+				symbol:     p.Symbol,
+				side:       p.Side,
+				size:       fmtFee(p.CostBasis),
+				entry:      fmtPrice(p.AvgEntryPrice),
+				exit:       exit,
+				pnl:        pnl,
+				pnlPct:     pnlPct,
+				opened:     fmtTimeShort(p.OpenedAt),
+				openedFull: fmtTime(p.OpenedAt),
+				closed:     closed,
+				closedFull: closedFull,
+				exitReason: exitReason,
 			}
 		}
-		PrintTable(
-			[]string{"TRADE-ID", "SYMBOL", "SIDE", "QTY", "PRICE", "FEE", "MARKET", "TIMESTAMP"},
-			rows,
-		)
+
+		if tradesLong {
+			// Long view: all columns including ID, full timestamps, exit reason
+			rows := make([][]string, len(posRows))
+			for i, r := range posRows {
+				rows[i] = []string{
+					r.id,
+					r.result,
+					r.symbol,
+					r.side,
+					r.size,
+					r.entry,
+					r.exit,
+					r.pnl,
+					r.pnlPct,
+					r.openedFull,
+					r.closedFull,
+					r.exitReason,
+				}
+			}
+			PrintTable(
+				[]string{"ID", "RESULT", "SYMBOL", "DIR", "SIZE", "ENTRY", "EXIT", "P&L", "P&L%", "OPENED", "CLOSED", "EXIT-REASON"},
+				rows,
+			)
+		} else {
+			// Short view (default): no ID, no exit reason, compact times (no year)
+			rows := make([][]string, len(posRows))
+			for i, r := range posRows {
+				rows[i] = []string{
+					r.result,
+					r.symbol,
+					r.side,
+					r.size,
+					r.entry,
+					r.exit,
+					r.pnl,
+					r.pnlPct,
+					r.opened,
+					r.closed,
+				}
+			}
+			PrintTable(
+				[]string{"RESULT", "SYMBOL", "DIR", "SIZE", "ENTRY", "EXIT", "P&L", "P&L%", "OPENED", "CLOSED"},
+				rows,
+			)
+		}
+
+		// Win/loss summary — only counts closed positions in the displayed rows.
+		var wins, losses int
+		for _, p := range allPositions {
+			if p.Status != "closed" {
+				continue
+			}
+			if p.RealizedPnL > 0 {
+				wins++
+			} else {
+				losses++
+			}
+		}
+		closed := wins + losses
+		if closed > 0 {
+			winPct := float64(wins) / float64(closed) * 100
+			fmt.Printf("\n%d wins  %d losses  %.0f%% win rate  (%d closed)\n", wins, losses, winPct, closed)
+		}
+
 		return nil
 	},
 }
@@ -353,6 +585,12 @@ func init() {
 	tradesListCmd.Flags().StringVar(&tradesStart, "start", "", "Filter from timestamp (RFC3339)")
 	tradesListCmd.Flags().StringVar(&tradesEnd, "end", "", "Filter to timestamp (RFC3339)")
 	tradesListCmd.Flags().IntVar(&tradesLimit, "limit", 50, "Max results to return (0 = all pages)")
+	tradesListCmd.Flags().BoolVar(&tradesRaw, "raw", false, "Show individual raw trades instead of the default round-trip view")
+	tradesListCmd.Flags().BoolVar(&tradesRaw, "legs", false, "Alias for --raw")
+	tradesListCmd.Flags().MarkHidden("legs")
+	tradesListCmd.Flags().BoolVar(&tradesLong, "long", false, "Show all columns (ID, full timestamps, exit reason)")
+	tradesListCmd.Flags().Bool("short", false, "Compact output — no ID, no year in timestamps (default)")
+	tradesListCmd.Flags().MarkHidden("short")
 
 	// trades add required flags
 	tradesAddCmd.Flags().StringVar(&addTradeID, "trade-id", "", "Trade ID (default: auto-generated UUID)")

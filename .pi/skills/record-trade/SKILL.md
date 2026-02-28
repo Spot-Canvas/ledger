@@ -262,15 +262,44 @@ curl -s "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.ap
 The `ledger` CLI wraps the REST API for human use. Key commands:
 
 ```bash
-ledger accounts list                 # list all accounts for the tenant
-ledger accounts show <account-id>    # show aggregate stats (win rate, P&L, trade count)
-ledger accounts show <account-id> --json  # raw JSON stats
+ledger accounts list                        # list all accounts for the tenant
+ledger accounts show <account-id>           # show aggregate stats (win rate, P&L, trade count)
+ledger accounts show <account-id> --json    # raw JSON stats
 
-ledger trades list --account live    # list recent trades
-ledger positions list --account live # list positions
-
-ledger import --file trades.csv      # bulk import trades from CSV
+ledger trades list <account-id>             # round-trip view: one row per position (default)
+ledger trades list <account-id> --raw       # raw trade view: one row per individual trade leg
+ledger trades list <account-id> --limit 20  # show last 20 positions (default: 50, 0 = all)
+ledger trades list <account-id> --long      # show all columns: ID, full timestamps, exit reason
+                                            # default (--short): no ID, compact times (no year)
 ```
+
+### Round-trip view (default)
+
+Shows one row per position. Columns: RESULT, SYMBOL, DIR, SIZE, ENTRY, EXIT, P&L, P&L%, OPENED, CLOSED.
+
+- `RESULT`: `✓ win`, `✗ loss`, or `open`
+- `SIZE`: cost basis in USD
+- `ENTRY` / `EXIT`: avg entry price and exit price
+- `P&L` / `P&L%`: realized P&L amount and percentage
+- `OPENED` / `CLOSED`: compact timestamps (`MM-DD HH:MM:SS`); `--long` shows full `YYYY-MM-DD HH:MM:SS`
+
+A win/loss summary is printed below the table, calculated from the displayed rows:
+
+```
+5 wins  2 losses  71% win rate  (7 closed)
+```
+
+Open positions are excluded from the win/loss count.
+
+### Raw trade view (`--raw`)
+
+Shows one row per individual trade leg. Columns (short): SYMBOL, SIDE, QTY, PRICE, FEE, MARKET, TIME.  
+With `--long`: adds the TRADE-ID column and shows full timestamps.
+
+Number formatting:
+- **QTY**: whole numbers for large quantities (e.g. `52447552` not `5.24e+07`)
+- **PRICE**: up to 6 decimal places for normal prices; scientific notation (`2.860e-05`) for micro-prices
+- **FEE**: max 4 decimal places, trailing zeros trimmed
 
 ## Deleting a Trade
 
