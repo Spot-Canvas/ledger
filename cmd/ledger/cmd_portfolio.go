@@ -21,6 +21,11 @@ type position struct {
 	Status        string     `json:"status"`
 	OpenedAt      time.Time  `json:"opened_at"`
 	ClosedAt      *time.Time `json:"closed_at,omitempty"`
+	ExitPrice     *float64   `json:"exit_price,omitempty"`
+	ExitReason    *string    `json:"exit_reason,omitempty"`
+	StopLoss      *float64   `json:"stop_loss,omitempty"`
+	TakeProfit    *float64   `json:"take_profit,omitempty"`
+	Confidence    *float64   `json:"confidence,omitempty"`
 }
 
 type portfolioSummary struct {
