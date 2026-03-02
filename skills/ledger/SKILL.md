@@ -1,12 +1,12 @@
 ---
 name: ledger
-description: Record trades, query positions, and inspect portfolio state using the `ledger` CLI. Use this skill when a trading bot needs to persist executed trades, check open positions before sizing a new trade, query realized P&L, or import historic trade history.
+description: Record trades, query positions, and inspect portfolio state using the `trader` CLI. Use this skill when a trading bot needs to persist executed trades, check open positions before sizing a new trade, query realized P&L, or import historic trade history.
 allowed-tools: Bash
 ---
 
 # ledger — Spot Canvas Trading Ledger CLI
 
-`ledger` is the command-line interface for the Spot Canvas ledger service. Trading bots use it to record executed trades, query live portfolio state, and inspect trade history.
+`trader` is the command-line interface for the Spot Canvas ledger service. Trading bots use it to record executed trades, query live portfolio state, and inspect trade history.
 
 ## Prerequisites
 
@@ -14,15 +14,15 @@ allowed-tools: Bash
 
 ```bash
 # Go toolchain
-go install github.com/Spot-Canvas/ledger/cmd/ledger@latest
+go install github.com/Signal-ngn/trader/cmd/trader@latest
 
 # Homebrew (macOS)
-brew install --cask Spot-Canvas/ledger/ledger
+brew install --cask Signal-ngn/trader/trader
 ```
 
 ### Authenticate
 
-The `ledger` CLI reads your API key from `~/.config/sn/config.yaml` (written by `sn auth login`):
+The `trader` CLI reads your API key from `~/.config/sn/config.yaml` (written by `sn auth login`):
 
 ```bash
 sn auth login        # one-time browser login
@@ -32,10 +32,10 @@ ledger accounts list # verify it works
 For bots and CI, set the API key directly via environment variable — no config file needed:
 
 ```bash
-export LEDGER_API_KEY=your-api-key
+export TRADER_API_KEY=your-api-key
 ```
 
-The tenant ID is resolved automatically on first use and cached in `~/.config/ledger/config.yaml`. Override with `LEDGER_TENANT_ID`.
+The tenant ID is resolved automatically on first use and cached in `~/.config/trader/config.yaml`. Override with `TRADER_TENANT_ID`.
 
 ---
 
@@ -307,15 +307,15 @@ Exits non-zero if any errors occurred. Re-running the same file is safe (duplica
 
 ```bash
 ledger config show                              # all resolved values and sources
-ledger config set ledger_url https://...        # override service URL
-ledger config get ledger_url
+ledger config set trader_url https://...        # override service URL
+ledger config get trader_url
 ```
 
 | Key | Default | Env override |
 |-----|---------|-------------|
-| `ledger_url` | `https://signalngn-ledger-potbdcvufa-ew.a.run.app` | `LEDGER_URL` |
-| `api_key` | _(from `~/.config/sn/config.yaml`)_ | `LEDGER_API_KEY` |
-| `tenant_id` | _(resolved via `/auth/resolve` on first use)_ | `LEDGER_TENANT_ID` |
+| `trader_url` | `https://signalngn-trader-potbdcvufa-ew.a.run.app` | `TRADER_URL` |
+| `api_key` | _(from `~/.config/sn/config.yaml`)_ | `TRADER_API_KEY` |
+| `tenant_id` | _(resolved via `/auth/resolve` on first use)_ | `TRADER_TENANT_ID` |
 
 ---
 
@@ -384,7 +384,7 @@ ledger import /tmp/trades-2025-02-01.json
 ### Point at a local ledger instance for testing
 
 ```bash
-LEDGER_URL=http://localhost:8080 ledger accounts list
+TRADER_URL=http://localhost:8080 ledger accounts list
 # or permanently:
-ledger config set ledger_url http://localhost:8080
+ledger config set trader_url http://localhost:8080
 ```

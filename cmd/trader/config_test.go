@@ -15,8 +15,8 @@ func resetViper(t *testing.T) {
 	t.Helper()
 	viper.Reset()
 	snViper = viper.New() // re-create; *viper.Viper has no Reset method
-	os.Unsetenv("LEDGER_API_KEY")
-	os.Unsetenv("LEDGER_TENANT_ID")
+	os.Unsetenv("TRADER_API_KEY")
+	os.Unsetenv("TRADER_TENANT_ID")
 }
 
 func writeTempConfig(t *testing.T, dir, filename, content string) string {
@@ -32,7 +32,7 @@ func writeTempConfig(t *testing.T, dir, filename, content string) string {
 
 func TestResolveAPIKey_EnvWins(t *testing.T) {
 	resetViper(t)
-	t.Setenv("LEDGER_API_KEY", "env-key-123")
+	t.Setenv("TRADER_API_KEY", "env-key-123")
 
 	key, src, err := resolveAPIKey()
 	if err != nil {
@@ -65,8 +65,8 @@ func TestResolveAPIKey_LedgerConfigBeforeSN(t *testing.T) {
 	if key != "ledger-key" {
 		t.Errorf("expected ledger-key, got %s", key)
 	}
-	if src != "[ledger]" {
-		t.Errorf("expected [ledger], got %s", src)
+	if src != "[trader]" {
+		t.Errorf("expected [trader], got %s", src)
 	}
 }
 
@@ -103,7 +103,7 @@ func TestResolveAPIKey_NoneFound(t *testing.T) {
 
 func TestResolveTenantID_EnvWins(t *testing.T) {
 	resetViper(t)
-	t.Setenv("LEDGER_TENANT_ID", "env-tenant-uuid")
+	t.Setenv("TRADER_TENANT_ID", "env-tenant-uuid")
 
 	tid, err := resolveTenantID("any-key", "http://unused")
 	if err != nil {
@@ -134,8 +134,8 @@ func TestResolveTenantID_FetchesFromServer(t *testing.T) {
 
 	// Override ledgerConfigPath by pointing viper at the temp file AND
 	// monkey-patching the write destination via the env var so writeConfigValue
-	// writes to the temp path, not the real ~/.config/ledger/config.yaml.
-	// We do this by temporarily overriding LEDGER_TENANT_ID after the call —
+	// writes to the temp path, not the real ~/.config/trader/config.yaml.
+	// We do this by temporarily overriding TRADER_TENANT_ID after the call —
 	// simplest approach is to just verify fetchTenantID directly.
 	_ = ledgerPath
 

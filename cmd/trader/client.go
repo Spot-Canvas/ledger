@@ -24,7 +24,7 @@ type Client struct {
 // newClient resolves credentials and returns a ready Client.
 // Exits the process with a helpful message if credentials are missing.
 func newClient() *Client {
-	ledgerURL := viper.GetString("ledger_url")
+	ledgerURL := viper.GetString("trader_url")
 
 	apiKey, _, err := resolveAPIKey()
 	if err != nil {
@@ -125,8 +125,8 @@ func (c *Client) doRaw(method, rawURL string, rawBody []byte) (int, []byte, erro
 	return resp.StatusCode, b, nil
 }
 
-// ledgerURL builds a URL against the ledger service.
-func (c *Client) ledgerURL(path string, params ...url.Values) string {
+// traderURL builds a URL against the trader service.
+func (c *Client) traderURL(path string, params ...url.Values) string {
 	u := c.LedgerURL + path
 	if len(params) > 0 && params[0] != nil {
 		q := params[0].Encode()

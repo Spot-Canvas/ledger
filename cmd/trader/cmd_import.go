@@ -36,7 +36,7 @@ var importCmd = &cobra.Command{
 		}
 
 		c := newClient()
-		endpoint := c.ledgerURL("/api/v1/import")
+		endpoint := c.traderURL("/api/v1/import")
 
 		if useJSON {
 			status, raw, err := c.PostRaw(endpoint, data)

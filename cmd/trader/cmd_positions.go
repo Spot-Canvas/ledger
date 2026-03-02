@@ -19,7 +19,7 @@ var positionsCmd = &cobra.Command{
 
 		q := url.Values{}
 		q.Set("status", positionsStatus)
-		endpoint := c.ledgerURL("/api/v1/accounts/"+accountID+"/positions", q)
+		endpoint := c.traderURL("/api/v1/accounts/"+accountID+"/positions", q)
 		useJSON, _ := cmd.Flags().GetBool("json")
 
 		if useJSON {

@@ -1,11 +1,11 @@
 ## Requirements
 
 ### Requirement: NATS JetStream subscription for trade events
-The system SHALL subscribe to NATS JetStream subject `ledger.trades.>` using a durable consumer to receive trade events published by the trading bot. The subscription SHALL use at-least-once delivery semantics.
+The system SHALL subscribe to NATS JetStream subject `trader.trades.>` using a durable consumer to receive trade events published by the trading bot. The subscription SHALL use at-least-once delivery semantics.
 
 #### Scenario: Service starts and subscribes
 - **WHEN** the ledger service starts
-- **THEN** it SHALL create a JetStream durable consumer on subject `ledger.trades.>` and begin receiving trade events
+- **THEN** it SHALL create a JetStream durable consumer on subject `trader.trades.>` and begin receiving trade events
 
 #### Scenario: Service restarts after downtime
 - **WHEN** the ledger service restarts after being offline
@@ -38,14 +38,14 @@ The system SHALL process trade events idempotently using the trade ID as the ded
 - **THEN** the system SHALL insert the trade and acknowledge the message
 
 ### Requirement: Multi-account trade routing
-The system SHALL support receiving trades for multiple accounts via the NATS subject hierarchy `ledger.trades.<account>.<market_type>`. The account identifier in the subject SHALL match the account ID in the trade event payload.
+The system SHALL support receiving trades for multiple accounts via the NATS subject hierarchy `trader.trades.<account>.<market_type>`. The account identifier in the subject SHALL match the account ID in the trade event payload.
 
 #### Scenario: Trade for live spot account
-- **WHEN** a trade event is published on `ledger.trades.live.spot`
+- **WHEN** a trade event is published on `trader.trades.live.spot`
 - **THEN** the system SHALL persist it with the corresponding account ID
 
 #### Scenario: Trade for paper futures account
-- **WHEN** a trade event is published on `ledger.trades.paper.futures`
+- **WHEN** a trade event is published on `trader.trades.paper.futures`
 - **THEN** the system SHALL persist it with the corresponding account ID
 
 ### Requirement: Futures trade fields

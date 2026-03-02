@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/Spot-Canvas/ledger/internal/api/middleware"
-	"github.com/Spot-Canvas/ledger/internal/domain"
-	"github.com/Spot-Canvas/ledger/internal/store"
+	"github.com/Signal-ngn/trader/internal/api/middleware"
+	"github.com/Signal-ngn/trader/internal/domain"
+	"github.com/Signal-ngn/trader/internal/store"
 )
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

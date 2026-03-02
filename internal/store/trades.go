@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/Spot-Canvas/ledger/internal/domain"
+	"github.com/Signal-ngn/trader/internal/domain"
 )
 
 // Sentinel errors for trade deletion.

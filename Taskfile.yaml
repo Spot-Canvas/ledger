@@ -1,7 +1,7 @@
 version: "3"
 
 vars:
-  BINARY: bin/ledger
+  BINARY: bin/trader
 
 tasks:
   default:
@@ -12,31 +12,31 @@ tasks:
   # ─── Build & Run ───────────────────────────────────────────
 
   build:
-    desc: Build ledger server binary
+    desc: Build trader server binary
     cmds:
-      - go build -o {{.BINARY}} ./cmd/ledgerd
+      - go build -o {{.BINARY}} ./cmd/traderd
 
   build:cli:
-    desc: Build ledger CLI binary (cmd/ledger → bin/ledger)
+    desc: Build trader CLI binary (cmd/trader → bin/trader)
     cmds:
-      - go build -o bin/ledger ./cmd/ledger
+      - go build -o bin/trader ./cmd/trader
 
   build:all:
     desc: Build all binaries (server + CLI)
     deps: [build, build:cli]
 
   run:
-    desc: Run ledger service (build + run)
+    desc: Run trader service (build + run)
     deps: [build]
     dotenv: [".env"]
     cmds:
       - ./{{.BINARY}}
 
   dev:
-    desc: Run ledger service directly with go run
+    desc: Run trader service directly with go run
     dotenv: [".env"]
     cmds:
-      - ENFORCE_AUTH=false HTTP_PORT=8080 go run ./cmd/ledgerd
+      - ENFORCE_AUTH=false HTTP_PORT=8080 go run ./cmd/traderd
 
   # ─── Testing ───────────────────────────────────────────────
 
@@ -96,21 +96,14 @@ tasks:
       - go test ./... -count=1
 
   # ─── Infrastructure ────────────────────────────────────────
-  #
-  # The ledger shares PostgreSQL and NATS with spot-canvas-app.
-  # If spot-canvas-app containers (spot-canvas-db, spot-canvas-nats)
-  # are already running, use `task infra:status` to check and skip
-  # `task infra:up`. The .env defaults connect to localhost:5432/4222
-  # which works with either set of containers.
 
   infra:up:
     desc: Start PostgreSQL and NATS containers
     cmds:
       - |
-        # Check for port conflicts with spot-canvas-app containers
         if docker ps --format '{{`{{.Names}}`}}' 2>/dev/null | grep -q spot-canvas-db; then
           echo "ℹ  spot-canvas-db is already running on port 5432 — skipping postgres"
-          echo "   The ledger will share the existing database."
+          echo "   The trader will share the existing database."
           SKIP_PG=1
         fi
         if docker ps --format '{{`{{.Names}}`}}' 2>/dev/null | grep -q spot-canvas-nats; then
@@ -120,7 +113,7 @@ tasks:
 
         if [ "${SKIP_PG:-}" = "1" ] && [ "${SKIP_NATS:-}" = "1" ]; then
           echo ""
-          echo "✓ Using spot-canvas-app infrastructure. Nothing to start."
+          echo "✓ Using existing infrastructure. Nothing to start."
           exit 0
         fi
 
@@ -131,7 +124,7 @@ tasks:
         docker compose up -d $SERVICES
 
   infra:down:
-    desc: Stop ledger containers (does not touch spot-canvas-app)
+    desc: Stop trader containers
     cmds:
       - docker compose down
 
@@ -170,7 +163,7 @@ tasks:
   docker:build:
     desc: Build Docker image locally
     cmds:
-      - docker build -t ledger:latest .
+      - docker build -t trader:latest .
 
   docker:run:
     desc: Run Docker image locally (connects to host network)
@@ -180,34 +173,14 @@ tasks:
         --network host
         -e DATABASE_URL=postgres://spot:spot@localhost:5432/spot_canvas?sslmode=disable
         -e NATS_URLS=nats://localhost:4222
-        ledger:latest
+        trader:latest
 
   # ─── Deployment ────────────────────────────────────────────
 
-  deploy:staging:
-    desc: Build, push, and deploy ledger to staging Cloud Run
-    cmds:
-      - ./scripts/deploy.sh --project spotcanvas-staging --env staging --tag staging
-
-  deploy:staging:dry-run:
-    desc: Preview staging deployment commands
-    cmds:
-      - ./scripts/deploy.sh --project spotcanvas-staging --env staging --tag staging --dry-run
-
-  deploy:staging:cloudbuild:
-    desc: Deploy to staging via Cloud Build (remote build)
-    cmds:
-      - gcloud builds submit --project=spotcanvas-staging --substitutions=_ENV=staging
-
   deploy:production:
-    desc: Build, push, and deploy ledger to production Cloud Run
+    desc: Deploy to production via Cloud Build using cloudbuild-prod.yaml
     cmds:
-      - ./scripts/deploy.sh --project signalngn-prod --env production --tag latest
-
-  deploy:production:cloudbuild:
-    desc: Deploy to production via Cloud Build (remote build)
-    cmds:
-      - gcloud builds submit --project=signalngn-prod --substitutions=_ENV=production
+      - gcloud builds submit --project=signalngn-prod --config=cloudbuild-prod.yaml --substitutions=_TAG=$(git rev-parse --short HEAD)
 
   # ─── Utilities ─────────────────────────────────────────────
 

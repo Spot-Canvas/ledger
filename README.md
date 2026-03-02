@@ -1,6 +1,6 @@
-# Ledger Service
+# Trader
 
-A Go service that acts as a trading ledger for the spot-canvas ecosystem. It ingests trade events via NATS JetStream, maintains portfolio state (positions, P&L), and exposes data through a REST API and CLI.
+A Go trading engine for the Signal Ngn ecosystem. It ingests trade events via NATS JetStream, maintains portfolio state (positions, P&L), and exposes data through a REST API and CLI.
 
 ## Features
 
@@ -10,7 +10,7 @@ A Go service that acts as a trading ledger for the spot-canvas ecosystem. It ing
 - **Multi-Account**: Support for live and paper trading accounts
 - **Spot & Futures**: Handles both spot trades and leveraged futures positions
 - **REST API**: HTTP endpoints for querying portfolio state and importing historic trades
-- **CLI**: `ledger` command-line tool for humans and trading bots
+- **CLI**: `trader` command-line tool for humans and trading bots
 - **Tax Data**: Captures cost basis, realized P&L, fees, and holding periods for tax reporting
 - **Idempotent**: Duplicate trades are safely discarded (dedup by trade ID)
 - **Rebuildable**: Positions can be rebuilt from trade history for audit/repair
@@ -25,87 +25,87 @@ A Go service that acts as a trading ledger for the spot-canvas ecosystem. It ing
 
 ```bash
 # go install
-go install github.com/Spot-Canvas/sn/cmd/sn@latest
+go install github.com/Signal-ngn/sn/cmd/sn@latest
 
 # Homebrew (macOS)
-brew install Spot-Canvas/sn/sn
+brew install Signal-ngn/sn/sn
 ```
 
-**2. Install the `ledger` CLI:**
+**2. Install the `trader` CLI:**
 
 ```bash
 # go install
-go install github.com/Spot-Canvas/ledger/cmd/ledger@latest
+go install github.com/Signal-ngn/trader/cmd/trader@latest
 
 # Homebrew (macOS)
-brew install --cask Spot-Canvas/ledger/ledger
+brew install --cask Signal-ngn/trader/ledger
 ```
 
 ### Authentication
 
 ```bash
 sn auth login          # opens browser — logs you in and stores your API key
-ledger accounts list   # works immediately; picks up the key from ~/.config/sn/config.yaml
+trader accounts list   # works immediately; picks up the key from ~/.config/sn/config.yaml
 ```
 
-For trading bots or CI, skip `sn` entirely and set `LEDGER_API_KEY` directly:
+For trading bots or CI, skip `sn` entirely and set `TRADER_API_KEY` directly:
 
 ```bash
-export LEDGER_API_KEY=your-api-key
-ledger accounts list
+export TRADER_API_KEY=your-api-key
+trader accounts list
 ```
 
-The tenant ID is resolved automatically on first use (via `GET /auth/resolve`) and cached in `~/.config/ledger/config.yaml`.
+The tenant ID is resolved automatically on first use (via `GET /auth/resolve`) and cached in `~/.config/trader/config.yaml`.
 
 ### Commands
 
 #### Accounts
 
 ```bash
-ledger accounts list           # list all accounts
-ledger accounts list --json    # JSON output
+trader accounts list           # list all accounts
+trader accounts list --json    # JSON output
 ```
 
 #### Portfolio
 
 ```bash
-ledger portfolio live          # open positions + total realized P&L
-ledger portfolio paper --json
+trader portfolio live          # open positions + total realized P&L
+trader portfolio paper --json
 ```
 
 #### Positions
 
 ```bash
-ledger positions live                    # open positions (default)
-ledger positions live --status closed    # closed positions
-ledger positions live --status all       # all positions
-ledger positions live --json
+trader positions live                    # open positions (default)
+trader positions live --status closed    # closed positions
+trader positions live --status all       # all positions
+trader positions live --json
 ```
 
 #### Trades
 
 ```bash
 # List trades
-ledger trades list live                         # 50 most recent trades
-ledger trades list live --symbol BTC-USD        # filter by symbol
-ledger trades list live --side buy              # filter by side
-ledger trades list live --market-type futures   # filter by market type
-ledger trades list live --start 2025-01-01T00:00:00Z --end 2025-02-01T00:00:00Z
-ledger trades list live --limit 200             # up to 200 results
-ledger trades list live --limit 0               # all trades (follows all pages)
-ledger trades list live --json
+trader trades list live                         # 50 most recent trades
+trader trades list live --symbol BTC-USD        # filter by symbol
+trader trades list live --side buy              # filter by side
+trader trades list live --market-type futures   # filter by market type
+trader trades list live --start 2025-01-01T00:00:00Z --end 2025-02-01T00:00:00Z
+trader trades list live --limit 200             # up to 200 results
+trader trades list live --limit 0               # all trades (follows all pages)
+trader trades list live --json
 
 # Record a trade
-ledger trades add live --symbol BTC-USD --side buy --quantity 0.1 --price 95000
+trader trades add live --symbol BTC-USD --side buy --quantity 0.1 --price 95000
 
 # With fees and strategy metadata
-ledger trades add live \
+trader trades add live \
   --symbol BTC-USD --side buy --quantity 0.1 --price 95000 \
   --fee 9.50 --strategy macd_momentum --confidence 0.78 \
   --stop-loss 93000 --take-profit 99000
 
 # Futures long with leverage
-ledger trades add live \
+trader trades add live \
   --symbol BTC-USD --side buy --quantity 0.5 --price 95000 \
   --market-type futures --leverage 10 --margin 4750
 ```
@@ -113,17 +113,17 @@ ledger trades add live \
 #### Orders
 
 ```bash
-ledger orders live                       # 50 most recent orders
-ledger orders live --status open         # open orders only
-ledger orders live --symbol BTC-USD
-ledger orders live --limit 0 --json      # all orders as JSON
+trader orders live                       # 50 most recent orders
+trader orders live --status open         # open orders only
+trader orders live --symbol BTC-USD
+trader orders live --limit 0 --json      # all orders as JSON
 ```
 
 #### Import
 
 ```bash
-ledger import trades.json          # import historic trades from file
-ledger import trades.json --json   # show full response JSON
+trader import trades.json          # import historic trades from file
+trader import trades.json --json   # show full response JSON
 ```
 
 The file must be a JSON object with a `"trades"` array matching the [trade event format](#nats-trade-events). Prints `Total / Inserted / Duplicates / Errors` and exits non-zero if any errors occurred.
@@ -131,49 +131,49 @@ The file must be a JSON object with a `"trades"` array matching the [trade event
 #### Config
 
 ```bash
-ledger config show                              # show all config values and sources
-ledger config set ledger_url https://...        # override service URL
-ledger config get ledger_url
+trader config show                              # show all config values and sources
+trader config set trader_url https://...        # override service URL
+trader config get trader_url
 ```
 
-Config file: `~/.config/ledger/config.yaml`
+Config file: `~/.config/trader/config.yaml`
 
 | Key | Default | Env override |
 |-----|---------|-------------|
-| `ledger_url` | `https://signalngn-ledger-potbdcvufa-ew.a.run.app` | `LEDGER_URL` |
-| `api_key` | _(from `~/.config/sn/config.yaml`)_ | `LEDGER_API_KEY` |
-| `tenant_id` | _(resolved automatically)_ | `LEDGER_TENANT_ID` |
+| `trader_url` | `https://signalngn-trader-potbdcvufa-ew.a.run.app` | `TRADER_URL` |
+| `api_key` | _(from `~/.config/sn/config.yaml`)_ | `TRADER_API_KEY` |
+| `tenant_id` | _(resolved automatically)_ | `TRADER_TENANT_ID` |
 
 #### Global flags
 
 ```bash
-ledger --ledger-url http://localhost:8080 accounts list   # one-off URL override
-ledger --json accounts list                               # JSON output (any command)
+trader --trader-url http://localhost:8080 accounts list   # one-off URL override
+trader --json accounts list                               # JSON output (any command)
 ```
 
 ---
 
 ## Agent Skill
 
-The ledger ships an [agent skill](https://agentskills.io) that gives AI coding agents full knowledge of the `ledger` CLI — commands, flags, trade event format, and bot patterns. Install it so your agent can record trades and query portfolio state without needing to look anything up.
+The ledger ships an [agent skill](https://agentskills.io) that gives AI coding agents full knowledge of the `trader` CLI — commands, flags, trade event format, and bot patterns. Install it so your agent can record trades and query portfolio state without needing to look anything up.
 
 Works with Claude Code, Cursor, pi, Windsurf, Codex, and [many more](https://github.com/vercel-labs/skills).
 
 ### Install
 
 ```bash
-npx skills add Spot-Canvas/ledger
+npx skills add Signal-ngn/trader
 ```
 
 For global installation (available in all projects):
 
 ```bash
-npx skills add Spot-Canvas/ledger -g
+npx skills add Signal-ngn/trader -g
 ```
 
 ### Usage
 
-Once installed the skill is available as **`ledger`** in your agent. Invoke it in any conversation where the agent needs to interact with the ledger:
+Once installed the skill is available as **`trader`** in your agent. Invoke it in any conversation where the agent needs to interact with the ledger:
 
 ```
 Use the ledger skill to check my open positions before placing this trade.
@@ -224,8 +224,8 @@ task deploy:production # deploy to Cloud Run
 ### Architecture
 
 ```
-cmd/ledger/          # CLI entry point
-cmd/ledgerd/         # Server entry point
+cmd/trader/          # CLI entry point
+cmd/traderd/         # Server entry point
 internal/
 ├── config/          # Configuration loading
 ├── domain/          # Core types: Trade, Position, Account, Order
@@ -241,9 +241,9 @@ Data flow: `Trading Bot → NATS → Ingestion → PostgreSQL ← REST API ← C
 
 ## NATS Trade Events
 
-The service subscribes to `ledger.trades.>`.
+The service subscribes to `trader.trades.>`.
 
-**Subject format:** `ledger.trades.<account>.<market_type>`
+**Subject format:** `trader.trades.<account>.<market_type>`
 
 ```json
 {
@@ -267,7 +267,7 @@ The service subscribes to `ledger.trades.>`.
 
 ## REST API
 
-**Production URL:** `https://signalngn-ledger-potbdcvufa-ew.a.run.app`
+**Production URL:** `https://signalngn-trader-potbdcvufa-ew.a.run.app`
 
 All `/api/v1/` and `/auth/resolve` endpoints require `Authorization: Bearer <api-key>`.
 
@@ -345,7 +345,7 @@ The ledger captures all data needed for tax reporting: cost basis, realized P&L,
 Each row is one complete trade (entry + exit pair), which is typically what tax authorities require:
 
 ```bash
-go run ./cmd/ledger trades list live --json | jq -r '
+go run ./cmd/trader trades list live --json | jq -r '
   ["RESULT","SYMBOL","DIR","SIZE","ENTRY","EXIT","PNL","PNL%","OPENED","CLOSED","EXIT_REASON"],
   (.[] | [
     (if .status == "open" then "open" elif .realized_pnl > 0 then "win" else "loss" end),
@@ -367,7 +367,7 @@ go run ./cmd/ledger trades list live --json | jq -r '
 Use `--limit 0` to export the full history (all pages):
 
 ```bash
-go run ./cmd/ledger trades list live --limit 0 --json | jq -r '...' > positions_full.csv
+go run ./cmd/trader trades list live --limit 0 --json | jq -r '...' > positions_full.csv
 ```
 
 ### Export raw individual trades to CSV
@@ -375,7 +375,7 @@ go run ./cmd/ledger trades list live --limit 0 --json | jq -r '...' > positions_
 If your tax authority requires every individual buy/sell transaction:
 
 ```bash
-go run ./cmd/ledger trades list live --raw --limit 0 --json | jq -r '
+go run ./cmd/trader trades list live --raw --limit 0 --json | jq -r '
   ["TRADE_ID","SYMBOL","SIDE","QTY","PRICE","FEE","MARKET","TIMESTAMP"],
   (.[] | [.trade_id, .symbol, .side, .quantity, .price, .fee, .market_type, .timestamp])
   | @csv

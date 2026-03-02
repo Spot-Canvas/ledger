@@ -2,20 +2,20 @@
 
 ### Requirement: API key resolution
 The CLI SHALL resolve the API key using the following priority order:
-1. `LEDGER_API_KEY` environment variable
-2. `api_key` in `~/.config/ledger/config.yaml` (manual override)
+1. `TRADER_API_KEY` environment variable
+2. `api_key` in `~/.config/trader/config.yaml` (manual override)
 3. `api_key` in `~/.config/sn/config.yaml` (written by `sn auth login`)
 
 If no API key can be found from any source the CLI SHALL print a clear error
-message directing the user to run `sn auth login` or set `LEDGER_API_KEY`,
+message directing the user to run `sn auth login` or set `TRADER_API_KEY`,
 and exit non-zero.
 
 #### Scenario: Key resolved from sn config
-- **WHEN** `LEDGER_API_KEY` is not set and `~/.config/sn/config.yaml` contains `api_key`
+- **WHEN** `TRADER_API_KEY` is not set and `~/.config/sn/config.yaml` contains `api_key`
 - **THEN** the CLI SHALL use that key for all requests
 
-#### Scenario: LEDGER_API_KEY overrides sn config
-- **WHEN** `LEDGER_API_KEY` is set in the environment
+#### Scenario: TRADER_API_KEY overrides sn config
+- **WHEN** `TRADER_API_KEY` is set in the environment
 - **THEN** the CLI SHALL use that value regardless of any config file contents
 
 #### Scenario: No API key found
@@ -26,17 +26,17 @@ and exit non-zero.
 
 ### Requirement: Lazy tenant ID resolution
 The CLI SHALL resolve `tenant_id` on the first command that requires it. If
-`LEDGER_TENANT_ID` is set it SHALL use that value. Otherwise if `tenant_id` is
-cached in `~/.config/ledger/config.yaml` it SHALL use that. Otherwise it SHALL
+`TRADER_TENANT_ID` is set it SHALL use that value. Otherwise if `tenant_id` is
+cached in `~/.config/trader/config.yaml` it SHALL use that. Otherwise it SHALL
 call `GET /auth/resolve` with the resolved API key, write the returned
-`tenant_id` to `~/.config/ledger/config.yaml`, and proceed.
+`tenant_id` to `~/.config/trader/config.yaml`, and proceed.
 
 #### Scenario: Tenant ID resolved from cache
-- **WHEN** `tenant_id` is present in `~/.config/ledger/config.yaml`
+- **WHEN** `tenant_id` is present in `~/.config/trader/config.yaml`
 - **THEN** the CLI SHALL use the cached value without calling `/auth/resolve`
 
 #### Scenario: Tenant ID resolved via auth/resolve
-- **WHEN** no cached `tenant_id` exists and no `LEDGER_TENANT_ID` env var is set
+- **WHEN** no cached `tenant_id` exists and no `TRADER_TENANT_ID` env var is set
 - **THEN** the CLI SHALL call `GET /auth/resolve`, cache the result, and proceed
 
 #### Scenario: Tenant ID resolution fails
@@ -236,8 +236,8 @@ SHALL exit non-zero if any trade errors occurred.
 
 ### Requirement: Config management
 The CLI SHALL support `ledger config show`, `ledger config set <key> <value>`,
-and `ledger config get <key>` to manage `~/.config/ledger/config.yaml`. Valid
-writable keys are `ledger_url`, `tenant_id`, `api_key`. `config show` SHALL
+and `ledger config get <key>` to manage `~/.config/trader/config.yaml`. Valid
+writable keys are `trader_url`, `tenant_id`, `api_key`. `config show` SHALL
 also display the resolved `api_key` source (sn config / ledger config / env)
 and mask the key value.
 
@@ -248,8 +248,8 @@ and mask the key value.
 - **AND** the source column SHALL indicate whether the key came from `[sn]`, `[ledger]`, `[env]`, or `[default]`
 
 #### Scenario: Config set writes to ledger config file
-- **WHEN** `ledger config set ledger_url https://my-ledger.example.com` is run
-- **THEN** the value SHALL be written to `~/.config/ledger/config.yaml`
+- **WHEN** `ledger config set trader_url https://my-ledger.example.com` is run
+- **THEN** the value SHALL be written to `~/.config/trader/config.yaml`
 
 #### Scenario: Config get unknown key
 - **WHEN** `ledger config get unknown_key` is run
@@ -266,6 +266,6 @@ support `--json` on all read commands.
 - **WHEN** `ledger --ledger-url http://localhost:8080 accounts list` is run
 - **THEN** all HTTP calls SHALL use `http://localhost:8080` as the base URL
 
-#### Scenario: LEDGER_URL env var
-- **WHEN** `LEDGER_URL=http://localhost:8080 ledger accounts list` is run
+#### Scenario: TRADER_URL env var
+- **WHEN** `TRADER_URL=http://localhost:8080 ledger accounts list` is run
 - **THEN** all HTTP calls SHALL use `http://localhost:8080` as the base URL

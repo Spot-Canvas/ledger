@@ -12,8 +12,8 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog/log"
 
-	"github.com/Spot-Canvas/ledger/internal/api/middleware"
-	"github.com/Spot-Canvas/ledger/internal/store"
+	"github.com/Signal-ngn/trader/internal/api/middleware"
+	"github.com/Signal-ngn/trader/internal/store"
 )
 
 // Server holds the HTTP server dependencies.

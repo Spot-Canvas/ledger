@@ -63,7 +63,7 @@ var ordersCmd = &cobra.Command{
 				q.Set("symbol", ordersSymbol)
 			}
 
-			endpoint := c.ledgerURL("/api/v1/accounts/"+accountID+"/orders", q)
+			endpoint := c.traderURL("/api/v1/accounts/"+accountID+"/orders", q)
 			var result orderListResult
 			if err := c.Get(endpoint, &result); err != nil {
 				return err

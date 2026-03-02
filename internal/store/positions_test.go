@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Spot-Canvas/ledger/internal/domain"
+	"github.com/Signal-ngn/trader/internal/domain"
 )
 
 // TestPositionCursorRoundTrip verifies that encodeCursor/decodeCursor work for

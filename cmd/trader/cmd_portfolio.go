@@ -40,7 +40,7 @@ var portfolioCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		accountID := args[0]
 		c := newClient()
-		endpoint := c.ledgerURL("/api/v1/accounts/" + accountID + "/portfolio")
+		endpoint := c.traderURL("/api/v1/accounts/" + accountID + "/portfolio")
 		useJSON, _ := cmd.Flags().GetBool("json")
 
 		if useJSON {

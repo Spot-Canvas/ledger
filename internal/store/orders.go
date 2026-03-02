@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Spot-Canvas/ledger/internal/domain"
+	"github.com/Signal-ngn/trader/internal/domain"
 )
 
 // UpsertOrder inserts or updates an order.

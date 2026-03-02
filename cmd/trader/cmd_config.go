@@ -10,7 +10,7 @@ import (
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Manage local CLI configuration (~/.config/ledger/config.yaml)",
+	Short: "Manage local CLI configuration (~/.config/trader/config.yaml)",
 }
 
 var configShowCmd = &cobra.Command{
@@ -26,11 +26,11 @@ var configShowCmd = &cobra.Command{
 		// Collect display rows
 		var rows [][]string
 
-		// ledger_url
+		// trader_url
 		rows = append(rows, []string{
-			"ledger_url",
-			viper.GetString("ledger_url"),
-			configSource("ledger_url"),
+			"trader_url",
+			viper.GetString("trader_url"),
+			configSource("trader_url"),
 		})
 
 		// api_key — resolved across three sources
@@ -61,7 +61,7 @@ var configShowCmd = &cobra.Command{
 
 var configSetCmd = &cobra.Command{
 	Use:   "set <key> <value>",
-	Short: "Set a config value in ~/.config/ledger/config.yaml",
+	Short: "Set a config value in ~/.config/trader/config.yaml",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]

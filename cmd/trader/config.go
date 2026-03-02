@@ -13,24 +13,24 @@ import (
 	"github.com/spf13/viper"
 )
 
-// validConfigKeys are the keys writable via `ledger config set`.
-var validConfigKeys = []string{"ledger_url", "tenant_id", "api_key"}
+// validConfigKeys are the keys writable via `trader config set`.
+var validConfigKeys = []string{"trader_url", "tenant_id", "api_key"}
 
 // configDefaults holds built-in defaults.
 var configDefaults = map[string]string{
-	"ledger_url": "https://signalngn-ledger-potbdcvufa-ew.a.run.app",
+	"trader_url": "https://signalngn-trader-370573530610.europe-west1.run.app",
 }
 
 // snViper is a read-only viper instance pointing at ~/.config/sn/config.yaml.
 var snViper = viper.New()
 
-// ledgerConfigPath returns the path to the ledger config file.
-func ledgerConfigPath() string {
+// traderConfigPath returns the path to the trader config file.
+func traderConfigPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".config", "ledger", "config.yaml")
+	return filepath.Join(home, ".config", "trader", "config.yaml")
 }
 
 // snConfigPath returns the path to the sn config file.
@@ -49,15 +49,15 @@ func loadConfig() {
 		viper.SetDefault(k, v)
 	}
 
-	// Ledger config file (read-write)
-	cfgPath := ledgerConfigPath()
+	// Trader config file (read-write)
+	cfgPath := traderConfigPath()
 	if cfgPath != "" {
 		viper.SetConfigFile(cfgPath)
 		_ = viper.ReadInConfig()
 	}
 
-	// Environment variables (LEDGER_ prefix)
-	viper.SetEnvPrefix("LEDGER")
+	// Environment variables (TRADER_ prefix)
+	viper.SetEnvPrefix("TRADER")
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
@@ -70,18 +70,18 @@ func loadConfig() {
 }
 
 // resolveAPIKey returns the API key using priority order:
-//  1. LEDGER_API_KEY env var
-//  2. api_key in ~/.config/ledger/config.yaml
+//  1. TRADER_API_KEY env var
+//  2. api_key in ~/.config/trader/config.yaml
 //  3. api_key in ~/.config/sn/config.yaml
 func resolveAPIKey() (string, string, error) {
-	// 1. Env var (already bound via AutomaticEnv with LEDGER_ prefix)
-	if key := os.Getenv("LEDGER_API_KEY"); key != "" {
+	// 1. Env var (already bound via AutomaticEnv with TRADER_ prefix)
+	if key := os.Getenv("TRADER_API_KEY"); key != "" {
 		return key, "[env]", nil
 	}
 
-	// 2. Ledger config
+	// 2. Trader config
 	if key := viper.GetString("api_key"); key != "" {
-		return key, "[ledger]", nil
+		return key, "[trader]", nil
 	}
 
 	// 3. sn config
@@ -89,26 +89,26 @@ func resolveAPIKey() (string, string, error) {
 		return key, "[sn]", nil
 	}
 
-	return "", "", fmt.Errorf("no API key found — run `sn auth login` or set LEDGER_API_KEY")
+	return "", "", fmt.Errorf("no API key found — run `sn auth login` or set TRADER_API_KEY")
 }
 
 // resolveTenantID returns the tenant ID using priority order:
-//  1. LEDGER_TENANT_ID env var
-//  2. tenant_id in ~/.config/ledger/config.yaml
+//  1. TRADER_TENANT_ID env var
+//  2. tenant_id in ~/.config/trader/config.yaml
 //  3. Call GET /auth/resolve and cache the result
-func resolveTenantID(apiKey, ledgerURL string) (string, error) {
+func resolveTenantID(apiKey, traderURL string) (string, error) {
 	// 1. Env var
-	if tid := os.Getenv("LEDGER_TENANT_ID"); tid != "" {
+	if tid := os.Getenv("TRADER_TENANT_ID"); tid != "" {
 		return tid, nil
 	}
 
-	// 2. Cached in ledger config
+	// 2. Cached in trader config
 	if tid := viper.GetString("tenant_id"); tid != "" {
 		return tid, nil
 	}
 
 	// 3. Resolve via /auth/resolve
-	tid, err := fetchTenantID(apiKey, ledgerURL)
+	tid, err := fetchTenantID(apiKey, traderURL)
 	if err != nil {
 		return "", err
 	}
@@ -119,8 +119,8 @@ func resolveTenantID(apiKey, ledgerURL string) (string, error) {
 }
 
 // fetchTenantID calls GET /auth/resolve and returns the tenant_id.
-func fetchTenantID(apiKey, ledgerURL string) (string, error) {
-	req, err := http.NewRequest("GET", ledgerURL+"/auth/resolve", nil)
+func fetchTenantID(apiKey, traderURL string) (string, error) {
+	req, err := http.NewRequest("GET", traderURL+"/auth/resolve", nil)
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
@@ -150,9 +150,9 @@ func fetchTenantID(apiKey, ledgerURL string) (string, error) {
 	return result.TenantID, nil
 }
 
-// writeConfigValue writes a key=value to the ledger config file.
+// writeConfigValue writes a key=value to the trader config file.
 func writeConfigValue(key, value string) error {
-	cfgPath := ledgerConfigPath()
+	cfgPath := traderConfigPath()
 	dir := filepath.Dir(cfgPath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
@@ -166,9 +166,9 @@ func writeConfigValue(key, value string) error {
 	return nil
 }
 
-// deleteConfigValue removes a key from the ledger config file.
+// deleteConfigValue removes a key from the trader config file.
 func deleteConfigValue(key string) error {
-	cfgPath := ledgerConfigPath()
+	cfgPath := traderConfigPath()
 	settings := viper.AllSettings()
 	delete(settings, key)
 	viper.Reset()
@@ -204,17 +204,17 @@ func isValidKey(key string) bool {
 
 // configSource returns where the value for a key comes from.
 func configSource(key string) string {
-	envKey := "LEDGER_" + strings.ToUpper(key)
+	envKey := "TRADER_" + strings.ToUpper(key)
 	if os.Getenv(envKey) != "" {
 		return "[env]"
 	}
 	// For api_key, check env without prefix too
 	if key == "api_key" {
-		if os.Getenv("LEDGER_API_KEY") != "" {
+		if os.Getenv("TRADER_API_KEY") != "" {
 			return "[env]"
 		}
 		if viper.GetString(key) != "" {
-			return "[ledger]"
+			return "[trader]"
 		}
 		if snViper.GetString(key) != "" {
 			return "[sn]"
@@ -222,7 +222,7 @@ func configSource(key string) string {
 		return "[not set]"
 	}
 	if viper.IsSet(key) && viper.ConfigFileUsed() != "" {
-		return "[ledger]"
+		return "[trader]"
 	}
 	_, hasDefault := configDefaults[key]
 	if hasDefault {

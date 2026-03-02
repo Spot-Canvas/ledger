@@ -16,8 +16,8 @@ func TestPublishTradeNotification_SubjectFormat(t *testing.T) {
 	accountID := "paper"
 	tradeID := "trade-001"
 
-	expectedSubject := "ledger.trades.notify.550e8400-e29b-41d4-a716-446655440000"
-	gotSubject := "ledger.trades.notify." + tenantID.String()
+	expectedSubject := "trader.trades.notify.550e8400-e29b-41d4-a716-446655440000"
+	gotSubject := "trader.trades.notify." + tenantID.String()
 
 	if gotSubject != expectedSubject {
 		t.Errorf("subject = %q, want %q", gotSubject, expectedSubject)

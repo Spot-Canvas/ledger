@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Spot-Canvas/ledger/internal/api/middleware"
-	"github.com/Spot-Canvas/ledger/internal/store"
+	"github.com/Signal-ngn/trader/internal/api/middleware"
+	"github.com/Signal-ngn/trader/internal/store"
 )
 
 // stubUserRepo is a minimal in-memory stub that satisfies the GetByAPIKey call.

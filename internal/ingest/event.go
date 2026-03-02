@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Spot-Canvas/ledger/internal/domain"
+	"github.com/Signal-ngn/trader/internal/domain"
 )
 
 // TradeEvent is the JSON structure for trade events received via NATS.

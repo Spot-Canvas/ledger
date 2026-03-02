@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: NATS notification on trade ingestion
-After a trade is successfully stored (transaction committed), the ledger service SHALL publish a notification to the NATS core subject `ledger.trades.notify.<tenantID>` where `<tenantID>` is the UUID of the tenant who owns the trade (hyphens included, lower-case). The payload SHALL be a JSON object with fields `tenant_id` (string UUID), `account_id` (string), and `trade_id` (string).
+After a trade is successfully stored (transaction committed), the ledger service SHALL publish a notification to the NATS core subject `trader.trades.notify.<tenantID>` where `<tenantID>` is the UUID of the tenant who owns the trade (hyphens included, lower-case). The payload SHALL be a JSON object with fields `tenant_id` (string UUID), `account_id` (string), and `trade_id` (string).
 
 #### Scenario: New trade triggers notification
 - **WHEN** a trade is successfully ingested via the JetStream consumer
-- **THEN** the service SHALL publish to `ledger.trades.notify.<tenantID>` with a JSON payload containing the trade's `tenant_id`, `account_id`, and `trade_id`
+- **THEN** the service SHALL publish to `trader.trades.notify.<tenantID>` with a JSON payload containing the trade's `tenant_id`, `account_id`, and `trade_id`
 
 #### Scenario: Duplicate trade does not trigger notification
 - **WHEN** a duplicate trade is received (already exists in the database)
@@ -20,12 +20,12 @@ After a trade is successfully stored (transaction committed), the ledger service
 - **THEN** the NATS notification is published after the commit returns
 
 ### Requirement: NATS subject format for trade notifications
-The notification subject SHALL follow the pattern `ledger.trades.notify.<tenantID>` where `<tenantID>` is the full UUID string in lowercase with hyphens (e.g. `ledger.trades.notify.550e8400-e29b-41d4-a716-446655440000`). Subscribers scoped to a tenant can subscribe to the exact subject; no wildcard subscription is needed per tenant.
+The notification subject SHALL follow the pattern `trader.trades.notify.<tenantID>` where `<tenantID>` is the full UUID string in lowercase with hyphens (e.g. `trader.trades.notify.550e8400-e29b-41d4-a716-446655440000`). Subscribers scoped to a tenant can subscribe to the exact subject; no wildcard subscription is needed per tenant.
 
 #### Scenario: Subject uses full UUID with hyphens
 - **WHEN** a notification is published for tenant `550e8400-e29b-41d4-a716-446655440000`
-- **THEN** the NATS subject is exactly `ledger.trades.notify.550e8400-e29b-41d4-a716-446655440000`
+- **THEN** the NATS subject is exactly `trader.trades.notify.550e8400-e29b-41d4-a716-446655440000`
 
 #### Scenario: Different tenants receive separate subjects
 - **WHEN** trades are ingested for two different tenants A and B
-- **THEN** notifications for tenant A are published to `ledger.trades.notify.<uuidA>` and for tenant B to `ledger.trades.notify.<uuidB>`, never cross-published
+- **THEN** notifications for tenant A are published to `trader.trades.notify.<uuidA>` and for tenant B to `trader.trades.notify.<uuidB>`, never cross-published

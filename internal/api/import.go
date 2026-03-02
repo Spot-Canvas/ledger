@@ -8,10 +8,10 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/Spot-Canvas/ledger/internal/api/middleware"
-	"github.com/Spot-Canvas/ledger/internal/domain"
-	"github.com/Spot-Canvas/ledger/internal/ingest"
-	"github.com/Spot-Canvas/ledger/internal/store"
+	"github.com/Signal-ngn/trader/internal/api/middleware"
+	"github.com/Signal-ngn/trader/internal/domain"
+	"github.com/Signal-ngn/trader/internal/ingest"
+	"github.com/Signal-ngn/trader/internal/store"
 )
 
 // ImportRequest is the request body for POST /api/v1/import.

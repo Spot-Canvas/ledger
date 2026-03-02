@@ -12,11 +12,11 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/Spot-Canvas/ledger/internal/api"
-	"github.com/Spot-Canvas/ledger/internal/api/middleware"
-	"github.com/Spot-Canvas/ledger/internal/config"
-	"github.com/Spot-Canvas/ledger/internal/ingest"
-	"github.com/Spot-Canvas/ledger/internal/store"
+	"github.com/Signal-ngn/trader/internal/api"
+	"github.com/Signal-ngn/trader/internal/api/middleware"
+	"github.com/Signal-ngn/trader/internal/config"
+	"github.com/Signal-ngn/trader/internal/ingest"
+	"github.com/Signal-ngn/trader/internal/store"
 )
 
 func main() {
@@ -41,7 +41,7 @@ func main() {
 		Str("port", cfg.HTTPPort).
 		Str("environment", cfg.Environment).
 		Bool("enforce_auth", cfg.EnforceAuth).
-		Msg("starting ledger service")
+		Msg("starting trader service")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -87,7 +87,7 @@ func main() {
 		}
 	}
 
-	// Initialise UserRepository (shares the same pool — same DB as spot-canvas-app)
+	// Initialise UserRepository (shares the same pool)
 	userRepo := store.NewUserRepository(repo.Pool())
 
 	// Start HTTP server immediately so Cloud Run health checks pass while NATS

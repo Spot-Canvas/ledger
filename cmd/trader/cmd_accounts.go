@@ -50,7 +50,7 @@ var accountsListCmd = &cobra.Command{
 		useJSON, _ := cmd.Flags().GetBool("json")
 
 		if useJSON {
-			_, raw, err := c.GetRaw(c.ledgerURL("/api/v1/accounts"))
+			_, raw, err := c.GetRaw(c.traderURL("/api/v1/accounts"))
 			if err != nil {
 				return err
 			}
@@ -59,7 +59,7 @@ var accountsListCmd = &cobra.Command{
 		}
 
 		var accounts []account
-		if err := c.Get(c.ledgerURL("/api/v1/accounts"), &accounts); err != nil {
+		if err := c.Get(c.traderURL("/api/v1/accounts"), &accounts); err != nil {
 			return err
 		}
 
@@ -81,7 +81,7 @@ var accountsShowCmd = &cobra.Command{
 		c := newClient()
 		useJSON, _ := cmd.Flags().GetBool("json")
 
-		statusCode, raw, err := c.GetRaw(c.ledgerURL("/api/v1/accounts/" + accountID + "/stats"))
+		statusCode, raw, err := c.GetRaw(c.traderURL("/api/v1/accounts/" + accountID + "/stats"))
 		if err != nil {
 			return err
 		}
@@ -150,7 +150,7 @@ var accountsBalanceSetCmd = &cobra.Command{
 			"currency": currency,
 		})
 
-		statusCode, raw, err := c.PutRaw(c.ledgerURL("/api/v1/accounts/"+accountID+"/balance"), bytes.NewReader(body))
+		statusCode, raw, err := c.PutRaw(c.traderURL("/api/v1/accounts/"+accountID+"/balance"), bytes.NewReader(body))
 		if err != nil {
 			return err
 		}
@@ -186,7 +186,7 @@ var accountsBalanceGetCmd = &cobra.Command{
 		useJSON, _ := cmd.Flags().GetBool("json")
 
 		c := newClient()
-		url := c.ledgerURL("/api/v1/accounts/" + accountID + "/balance?currency=" + currency)
+		url := c.traderURL("/api/v1/accounts/" + accountID + "/balance?currency=" + currency)
 		statusCode, raw, err := c.GetRaw(url)
 		if err != nil {
 			return err

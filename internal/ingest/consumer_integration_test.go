@@ -13,8 +13,8 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/Spot-Canvas/ledger/internal/ingest"
-	"github.com/Spot-Canvas/ledger/internal/store"
+	"github.com/Signal-ngn/trader/internal/ingest"
+	"github.com/Signal-ngn/trader/internal/store"
 )
 
 // Integration test requires:
@@ -95,7 +95,7 @@ func TestIngestionFlow(t *testing.T) {
 		t.Fatalf("marshal event: %v", err)
 	}
 
-	_, err = js.Publish(ctx, "ledger.trades.test-account.spot", data)
+	_, err = js.Publish(ctx, "trader.trades.test-account.spot", data)
 	if err != nil {
 		t.Fatalf("publish trade: %v", err)
 	}

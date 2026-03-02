@@ -18,9 +18,9 @@ func init() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:           "ledger",
-	Short:         "Ledger CLI",
-	Long:          `ledger is the command-line interface for the Spot Canvas ledger service.`,
+	Use:           "trader",
+	Short:         "Trader CLI",
+	Long:          `trader is the command-line interface for the Signal Ngn trader service.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
@@ -35,7 +35,7 @@ func main() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().String("ledger-url", "", "Ledger service URL (overrides config/env)")
+	rootCmd.PersistentFlags().String("trader-url", "", "Trader service URL (overrides config/env)")
 	rootCmd.PersistentFlags().Bool("json", false, "Output as JSON")
 
 	rootCmd.Version = version
@@ -43,5 +43,5 @@ func init() {
 
 func initConfig() {
 	loadConfig()
-	_ = viper.BindPFlag("ledger_url", rootCmd.PersistentFlags().Lookup("ledger-url"))
+	_ = viper.BindPFlag("trader_url", rootCmd.PersistentFlags().Lookup("trader-url"))
 }

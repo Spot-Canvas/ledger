@@ -17,9 +17,9 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/Spot-Canvas/ledger/internal/api"
-	"github.com/Spot-Canvas/ledger/internal/ingest"
-	"github.com/Spot-Canvas/ledger/internal/store"
+	"github.com/Signal-ngn/trader/internal/api"
+	"github.com/Signal-ngn/trader/internal/ingest"
+	"github.com/Signal-ngn/trader/internal/store"
 )
 
 // Integration test requires:
@@ -95,7 +95,7 @@ func TestAPIIntegration(t *testing.T) {
 		Timestamp:   time.Now().UTC().Format(time.RFC3339),
 	}
 	data, _ := json.Marshal(event)
-	if _, err := js.Publish(ctx, "ledger.trades.api-test-account.spot", data); err != nil {
+	if _, err := js.Publish(ctx, "trader.trades.api-test-account.spot", data); err != nil {
 		t.Fatalf("publish trade: %v", err)
 	}
 

@@ -1,15 +1,15 @@
 version: 2
 
-project_name: ledger
+project_name: trader
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - id: ledger-cli
-    main: ./cmd/ledger
-    binary: ledger
+  - id: trader-cli
+    main: ./cmd/trader
+    binary: trader
     env:
       - CGO_ENABLED=0
     goos:
@@ -25,8 +25,8 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 archives:
-  - id: ledger-cli
-    ids: [ledger-cli]
+  - id: trader-cli
+    ids: [trader-cli]
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
 
@@ -45,18 +45,18 @@ changelog:
 
 release:
   github:
-    owner: Spot-Canvas
-    name: ledger
+    owner: Signal-ngn
+    name: trader
 
 homebrew_casks:
-  - name: ledger
-    ids: [ledger-cli]
+  - name: trader
+    ids: [trader-cli]
     repository:
-      owner: Spot-Canvas
-      name: ledger
+      owner: Signal-ngn
+      name: trader
       token: "{{ .Env.GITHUB_TOKEN }}"
     directory: Casks
-    homepage: "https://github.com/Spot-Canvas/ledger"
-    description: "Spot Canvas ledger CLI — query accounts, positions, trades, and import historic data"
+    homepage: "https://github.com/Signal-ngn/trader"
+    description: "Signal Ngn trader CLI — query accounts, positions, trades, and manage live exchange orders"
     license: "MIT"
-    binaries: [ledger]
+    binaries: [trader]

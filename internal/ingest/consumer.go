@@ -13,19 +13,19 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/Spot-Canvas/ledger/internal/domain"
-	"github.com/Spot-Canvas/ledger/internal/store"
+	"github.com/Signal-ngn/trader/internal/domain"
+	"github.com/Signal-ngn/trader/internal/store"
 )
 
 const (
-	// StreamName is the JetStream stream name for ledger trades.
-	StreamName = "LEDGER_TRADES"
+	// StreamName is the JetStream stream name for trader trades.
+	StreamName = "TRADER_TRADES"
 	// SubjectPrefix is the NATS subject prefix for trade events.
-	SubjectPrefix = "ledger.trades."
+	SubjectPrefix = "trader.trades."
 	// SubjectWildcard subscribes to all trade subjects.
-	SubjectWildcard = "ledger.trades.>"
+	SubjectWildcard = "trader.trades.>"
 	// ConsumerName is the durable consumer name.
-	ConsumerName = "ledger-trade-consumer"
+	ConsumerName = "trader-trade-consumer"
 )
 
 // Consumer subscribes to trade events via NATS JetStream.
@@ -178,10 +178,10 @@ func (c *Consumer) handleMessage(ctx context.Context, msg jetstream.Msg) error {
 }
 
 // publishTradeNotification publishes a lightweight JSON notification to
-// ledger.trades.notify.<tenantID> on NATS core (fire-and-forget).
+// trader.trades.notify.<tenantID> on NATS core (fire-and-forget).
 // A publish error is logged at warn level and never propagated.
 func publishTradeNotification(nc *nats.Conn, tenantID uuid.UUID, accountID, tradeID string) {
-	subject := "ledger.trades.notify." + tenantID.String()
+	subject := "trader.trades.notify." + tenantID.String()
 	payload, err := json.Marshal(map[string]string{
 		"tenant_id":  tenantID.String(),
 		"account_id": accountID,

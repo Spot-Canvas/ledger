@@ -154,7 +154,7 @@ var tradesListCmd = &cobra.Command{
 					q.Set("end", tradesEnd)
 				}
 
-				endpoint := c.ledgerURL("/api/v1/accounts/"+accountID+"/trades", q)
+				endpoint := c.traderURL("/api/v1/accounts/"+accountID+"/trades", q)
 				var result tradeListResult
 				if err := c.Get(endpoint, &result); err != nil {
 					return err
@@ -241,7 +241,7 @@ var tradesListCmd = &cobra.Command{
 				q.Set("cursor", cursor)
 			}
 
-			endpoint := c.ledgerURL("/api/v1/accounts/"+accountID+"/positions", q)
+			endpoint := c.traderURL("/api/v1/accounts/"+accountID+"/positions", q)
 			statusCode, body, err := c.GetRaw(endpoint)
 			if err != nil {
 				return err
@@ -499,7 +499,7 @@ var tradesAddCmd = &cobra.Command{
 		}
 
 		c := newClient()
-		endpoint := c.ledgerURL("/api/v1/import")
+		endpoint := c.traderURL("/api/v1/import")
 		req := addTradeRequest{Trades: []addTradeEvent{event}}
 
 		var result importResult
@@ -545,7 +545,7 @@ var tradesDeleteCmd = &cobra.Command{
 		}
 
 		c := newClient()
-		endpoint := c.ledgerURL("/api/v1/trades/" + tradeID)
+		endpoint := c.traderURL("/api/v1/trades/" + tradeID)
 
 		var result map[string]string
 		err := c.Delete(endpoint, &result)

@@ -8,7 +8,7 @@ The Spot Canvas Ledger records trades, tracks positions, and computes P&L. It su
 ## Base URL
 
 ```
-https://spot-canvas-ledger-staging-970386657060.europe-west3.run.app
+https://signalngn-trader-staging.europe-west1.run.app
 ```
 
 No authentication required. All responses are `Content-Type: application/json`.
@@ -36,21 +36,21 @@ For real-time trade recording, publish to NATS JetStream after each trade execut
 
 ### NATS Connection
 
-- **URL**: same NATS cluster as the rest of spot-canvas (Synadia NGS)
-- **Stream**: `LEDGER_TRADES`
+- **URL**: same NATS cluster as the Signal Ngn platform (Synadia NGS)
+- **Stream**: `TRADER_TRADES`
 - **Credentials**: use the same NATS credentials file as the rest of the system
 
 ### Subject Format
 
 ```
-ledger.trades.<accountId>.<marketType>
+trader.trades.<accountId>.<marketType>
 ```
 
 Examples:
-- `ledger.trades.paper.spot` — paper spot trade
-- `ledger.trades.paper.futures` — paper futures trade
-- `ledger.trades.live.spot` — live spot trade
-- `ledger.trades.coinbase.spot` — live trade on Coinbase
+- `trader.trades.paper.spot` — paper spot trade
+- `trader.trades.paper.futures` — paper futures trade
+- `trader.trades.live.spot` — live spot trade
+- `trader.trades.coinbase.spot` — live trade on Coinbase
 
 ### Message Format (JSON)
 
@@ -314,7 +314,7 @@ HTTP status codes: 400 (bad request/validation), 404 (not found), 422 (all inser
 
 | Action | Method | When |
 |---|---|---|
-| Record a trade in real time | NATS publish to `ledger.trades.<accountId>.<marketType>` | After each trade execution |
+| Record a trade in real time | NATS publish to `trader.trades.<accountId>.<marketType>` | After each trade execution |
 | Backfill historic trades | `POST /api/v1/import` | One-time import of old trades |
 | Check current positions | `GET /api/v1/accounts/{accountId}/portfolio` | Before trading decisions |
 | Check if position is open | `GET /api/v1/accounts/{accountId}/positions?status=open` | Before opening new positions |

@@ -1,4 +1,4 @@
-module github.com/Spot-Canvas/ledger
+module github.com/Signal-ngn/trader
 
 go 1.24.6
 
