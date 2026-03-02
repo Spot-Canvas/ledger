@@ -18,7 +18,7 @@ var validConfigKeys = []string{"trader_url", "tenant_id", "api_key"}
 
 // configDefaults holds built-in defaults.
 var configDefaults = map[string]string{
-	"trader_url": "https://signalngn-trader-370573530610.europe-west1.run.app",
+	"trader_url": "https://signalngn-trader-potbdcvufa-ew.a.run.app",
 }
 
 // snViper is a read-only viper instance pointing at ~/.config/sn/config.yaml.
@@ -84,8 +84,9 @@ func resolveAPIKey() (string, string, error) {
 		return key, "[trader]", nil
 	}
 
-	// 3. sn config
+	// 3. sn config — copy to trader config for future use
 	if key := snViper.GetString("api_key"); key != "" {
+		_ = writeConfigValue("api_key", key)
 		return key, "[sn]", nil
 	}
 

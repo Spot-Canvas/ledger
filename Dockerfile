@@ -13,8 +13,8 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the ledger binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /ledger ./cmd/ledgerd
+# Build the trader binary
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /trader ./cmd/traderd
 
 # Runtime stage
 FROM alpine:3.19
@@ -25,7 +25,7 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata
 
 # Copy binary from builder
-COPY --from=builder /ledger /app/ledger
+COPY --from=builder /trader /app/trader
 
 # Create non-root user
 RUN adduser -D -g '' appuser
@@ -39,4 +39,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 # Run the binary
-ENTRYPOINT ["/app/ledger"]
+ENTRYPOINT ["/app/trader"]

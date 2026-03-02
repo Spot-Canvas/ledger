@@ -11,7 +11,7 @@ Record executed trades to the Spot Canvas trading ledger via its REST import API
 **Endpoint:** `POST /api/v1/import`
 
 The ledger URL depends on the environment:
-- **Staging:** `https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app`
+- **Staging:** `https://signalngn-trader-staging.europe-west1.run.app`
 - **Production:** Use the `LEDGER_URL` environment variable if set, otherwise ask the user.
 
 ## Recording a Trade
@@ -19,7 +19,7 @@ The ledger URL depends on the environment:
 Use `curl` to POST a JSON body with one or more trades.
 
 ```bash
-curl -s -X POST "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/import" \
+curl -s -X POST "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/import" \
   -H "Content-Type: application/json" \
   -d '{
     "trades": [{
@@ -105,7 +105,7 @@ Status per trade is one of: `"inserted"`, `"duplicate"`, `"error"`.
 ### Spot buy with strategy metadata
 
 ```bash
-curl -s -X POST "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/import" \
+curl -s -X POST "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/import" \
   -H "Content-Type: application/json" \
   -d '{
     "trades": [{
@@ -131,7 +131,7 @@ curl -s -X POST "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.
 ### Spot sell (closing position)
 
 ```bash
-curl -s -X POST "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/import" \
+curl -s -X POST "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/import" \
   -H "Content-Type: application/json" \
   -d '{
     "trades": [{
@@ -153,7 +153,7 @@ curl -s -X POST "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.
 ### Leveraged futures trade
 
 ```bash
-curl -s -X POST "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/import" \
+curl -s -X POST "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/import" \
   -H "Content-Type: application/json" \
   -d '{
     "trades": [{
@@ -183,7 +183,7 @@ curl -s -X POST "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.
 Up to 1000 trades per request. Trades are automatically sorted by timestamp for correct position calculation.
 
 ```bash
-curl -s -X POST "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/import" \
+curl -s -X POST "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/import" \
   -H "Content-Type: application/json" \
   -d '{
     "trades": [
@@ -202,7 +202,7 @@ The ledger tracks a cash balance per account. The trading agent should set an in
 Use `PUT /api/v1/accounts/{accountId}/balance` to set an initial balance or to manually correct it after broker reconciliation. This **overwrites** the current value unconditionally.
 
 ```bash
-curl -s -X PUT "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/accounts/live/balance" \
+curl -s -X PUT "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/accounts/live/balance" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${LEDGER_API_KEY}" \
   -d '{"amount": 50000, "currency": "USD"}'
@@ -218,15 +218,15 @@ Response:
 CLI equivalent:
 
 ```bash
-ledger accounts balance set live 50000               # set USD balance
-ledger accounts balance set live 40000 --currency EUR  # set EUR balance
-ledger accounts balance set live 50000 --json        # raw JSON response
+trader accounts balance set live 50000               # set USD balance
+trader accounts balance set live 40000 --currency EUR  # set EUR balance
+trader accounts balance set live 50000 --json        # raw JSON response
 ```
 
 ### Query account balance
 
 ```bash
-curl -s "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/accounts/live/balance" \
+curl -s "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/accounts/live/balance" \
   -H "Authorization: Bearer ${LEDGER_API_KEY}"
 ```
 
@@ -242,9 +242,9 @@ Optional `?currency=EUR` query parameter selects a non-default currency.
 CLI equivalent:
 
 ```bash
-ledger accounts balance get live               # show balance table
-ledger accounts balance get live --currency EUR  # EUR balance
-ledger accounts balance get live --json        # raw JSON
+trader accounts balance get live               # show balance table
+trader accounts balance get live --currency EUR  # EUR balance
+trader accounts balance get live --json        # raw JSON
 ```
 
 ### How automatic balance adjustment works
@@ -265,10 +265,10 @@ Position **rebuild** does not touch the balance — it only reconstructs positio
 When a balance has been set, it is included in the portfolio summary and account stats responses as an optional `"balance"` field. It is omitted entirely when no balance row exists.
 
 ```bash
-curl -s "${LEDGER_URL:-...}/api/v1/accounts/live/portfolio" | python3 -m json.tool
+curl -s "${TRADER_URL:-...}/api/v1/accounts/live/portfolio" | python3 -m json.tool
 # → { "positions": [...], "total_realized_pnl": 1234.5, "balance": 47250.00 }
 
-curl -s "${LEDGER_URL:-...}/api/v1/accounts/live/stats" | python3 -m json.tool
+curl -s "${TRADER_URL:-...}/api/v1/accounts/live/stats" | python3 -m json.tool
 # → { ..., "total_realized_pnl": 1234.5, "balance": 47250.00 }
 ```
 
@@ -281,7 +281,7 @@ After recording trades, you can query positions and trade history.
 REST endpoint — returns aggregate stats computed from round-trips (closed positions):
 
 ```bash
-curl -s "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/accounts/live/stats" | python3 -m json.tool
+curl -s "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/accounts/live/stats" | python3 -m json.tool
 ```
 
 Response:
@@ -303,58 +303,58 @@ Response:
 CLI equivalent:
 
 ```bash
-ledger accounts show live            # human-readable table (includes balance row when set)
-ledger accounts show live --json     # raw JSON
+trader accounts show live            # human-readable table (includes balance row when set)
+trader accounts show live --json     # raw JSON
 ```
 
 ### Check open positions
 
 ```bash
-curl -s "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/accounts/live/positions?status=open" | python3 -m json.tool
+curl -s "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/accounts/live/positions?status=open" | python3 -m json.tool
 ```
 
 ### Check closed positions (with exit_price, exit_reason)
 
 ```bash
-curl -s "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/accounts/live/positions?status=closed" | python3 -m json.tool
+curl -s "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/accounts/live/positions?status=closed" | python3 -m json.tool
 ```
 
 ### Get portfolio summary
 
 ```bash
-curl -s "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/accounts/live/portfolio" | python3 -m json.tool
+curl -s "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/accounts/live/portfolio" | python3 -m json.tool
 ```
 
 ### List recent trades
 
 ```bash
-curl -s "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/accounts/live/trades?limit=10" | python3 -m json.tool
+curl -s "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/accounts/live/trades?limit=10" | python3 -m json.tool
 ```
 
 ### Filter trades by symbol
 
 ```bash
-curl -s "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/accounts/live/trades?symbol=BTC-USD&limit=20" | python3 -m json.tool
+curl -s "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/accounts/live/trades?symbol=BTC-USD&limit=20" | python3 -m json.tool
 ```
 
-## `ledger` CLI Reference
+## `trader` CLI Reference
 
-The `ledger` CLI wraps the REST API for human use. Key commands:
+The `trader` CLI wraps the REST API for human use. Key commands:
 
 ```bash
-ledger accounts list                                    # list all accounts for the tenant
-ledger accounts show <account-id>                       # show aggregate stats (win rate, P&L, trade count, balance)
-ledger accounts show <account-id> --json                # raw JSON stats
+trader accounts list                                    # list all accounts for the tenant
+trader accounts show <account-id>                       # show aggregate stats (win rate, P&L, trade count, balance)
+trader accounts show <account-id> --json                # raw JSON stats
 
-ledger accounts balance set <account-id> <amount>       # set/overwrite account balance (USD)
-ledger accounts balance set <account-id> <amount> --currency EUR  # set non-USD balance
-ledger accounts balance get <account-id>                # query current balance
-ledger accounts balance get <account-id> --currency EUR # query non-USD balance
+trader accounts balance set <account-id> <amount>       # set/overwrite account balance (USD)
+trader accounts balance set <account-id> <amount> --currency EUR  # set non-USD balance
+trader accounts balance get <account-id>                # query current balance
+trader accounts balance get <account-id> --currency EUR # query non-USD balance
 
-ledger trades list <account-id>             # round-trip view: one row per position (default)
-ledger trades list <account-id> --raw       # raw trade view: one row per individual trade leg
-ledger trades list <account-id> --limit 20  # show last 20 positions (default: 50, 0 = all)
-ledger trades list <account-id> --long      # show all columns: ID, full timestamps, exit reason
+trader trades list <account-id>             # round-trip view: one row per position (default)
+trader trades list <account-id> --raw       # raw trade view: one row per individual trade leg
+trader trades list <account-id> --limit 20  # show last 20 positions (default: 50, 0 = all)
+trader trades list <account-id> --long      # show all columns: ID, full timestamps, exit reason
                                             # default (--short): no ID, compact times (no year)
 ```
 
@@ -395,7 +395,7 @@ A trade can only be deleted if its account/symbol has **no open position**. If t
 ### Via CLI
 
 ```bash
-ledger trades delete <trade-id> --confirm
+trader trades delete <trade-id> --confirm
 ```
 
 The `--confirm` flag is required to prevent accidental deletion.
@@ -404,10 +404,10 @@ The `--confirm` flag is required to prevent accidental deletion.
 
 ```bash
 # Delete a specific test trade
-ledger trades delete bot-1234567890 --confirm
+trader trades delete bot-1234567890 --confirm
 
 # Delete and get JSON response
-ledger trades delete bot-1234567890 --confirm --json
+trader trades delete bot-1234567890 --confirm --json
 ```
 
 **Exit codes and messages:**
@@ -423,7 +423,7 @@ ledger trades delete bot-1234567890 --confirm --json
 
 ```bash
 curl -s -X DELETE \
-  "${LEDGER_URL:-https://spot-canvas-ledger-staging-uumkospiua-ey.a.run.app}/api/v1/trades/<trade-id>" \
+  "${TRADER_URL:-https://signalngn-trader-staging.europe-west1.run.app}/api/v1/trades/<trade-id>" \
   -H "Authorization: Bearer ${LEDGER_API_KEY}"
 ```
 
