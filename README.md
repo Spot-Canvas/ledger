@@ -1,6 +1,6 @@
 # Trader
 
-A Go trading engine for the Signal Ngn ecosystem. It ingests trade events via NATS JetStream, maintains portfolio state (positions, P&L), and exposes data through a REST API and CLI.
+A Go trading engine for the Signal Ngn ecosystem. It ingests trade events via NATS JetStream, maintains portfolio state (positions, P&L), exposes data through a REST API and CLI, and runs a signal-driven trading engine that can execute paper or live trades autonomously.
 
 ## Features
 
@@ -14,6 +14,8 @@ A Go trading engine for the Signal Ngn ecosystem. It ingests trade events via NA
 - **Tax Data**: Captures cost basis, realized P&L, fees, and holding periods for tax reporting
 - **Idempotent**: Duplicate trades are safely discarded (dedup by trade ID)
 - **Rebuildable**: Positions can be rebuilt from trade history for audit/repair
+- **Trading Engine**: Signal-driven engine goroutine — subscribes to Synadia NGS signals, executes paper or live (Binance Futures) trades, enforces risk rules (SL/TP, trailing stop, max hold time, daily loss limit, kill switch)
+- **Live Trade Stream**: SSE endpoint streams trade events in real time to the CLI and dashboards
 
 ---
 
@@ -108,6 +110,10 @@ trader trades add live \
 trader trades add live \
   --symbol BTC-USD --side buy --quantity 0.5 --price 95000 \
   --market-type futures --leverage 10 --margin 4750
+
+# Stream live trade events (SSE → JSONL to stdout)
+trader trades watch live
+trader trades watch paper
 ```
 
 #### Orders
@@ -231,11 +237,125 @@ internal/
 ├── domain/          # Core types: Trade, Position, Account, Order
 ├── store/           # PostgreSQL repository, migrations
 ├── ingest/          # NATS JetStream consumer, trade processing
-└── api/             # REST handlers, routing, middleware
+├── engine/          # Trading engine goroutine (signals, positions, risk, exchange)
+└── api/             # REST handlers, routing, middleware, SSE stream
 migrations/          # SQL migration files
 ```
 
-Data flow: `Trading Bot → NATS → Ingestion → PostgreSQL ← REST API ← CLI / Dashboard`
+Data flows:
+
+```
+Trading Bot  → NATS JetStream → Ingestion → PostgreSQL ← REST API ← CLI / Dashboard
+                                                 ↑
+NGS Signals → Engine ──────────────────────────→┘
+                  └→ Exchange (Binance Futures / Noop)
+```
+
+---
+
+## Trading Engine
+
+The `traderd` server includes an optional signal-driven trading engine. When enabled it subscribes to [Synadia NGS](https://www.synadia.com/ngs) signals, filters them against your configured trading strategies, and executes paper or live trades — writing every fill to the ledger through the same path as manual ingestion.
+
+### Enable
+
+Set `TRADING_ENABLED=true` in your environment or `.env` file. The engine starts as a goroutine inside `traderd` — no separate binary is needed.
+
+### Modes
+
+| Mode | `TRADING_MODE` | Exchange |
+|---|---|---|
+| Paper | `paper` (default) | Synthetic fills at signal price, zero fees |
+| Live | `live` | Binance Futures (raw HTTP, HMAC-SHA256 signed) |
+
+### Configuration
+
+| Env var | Default | Description |
+|---|---|---|
+| `TRADING_ENABLED` | `false` | Set `true` to start the engine |
+| `TRADING_MODE` | `paper` | `paper` or `live` |
+| `TRADER_ACCOUNT` | `paper` | Account ID all engine trades are booked under |
+| `STRATEGY_FILTER` | — | Optional prefix — only process signals whose strategy starts with this string |
+| `PORTFOLIO_SIZE` | `10000` | Total portfolio size in USD |
+| `POSITION_SIZE_PCT` | `10` | Default position size as % of portfolio (overridden per-signal by `position_pct`) |
+| `MAX_POSITION_SIZE` | `0` | Max position size in USD (0 = no cap) |
+| `MIN_POSITION_SIZE` | `0` | Min position size in USD (0 = no floor) |
+| `MAX_POSITIONS` | `0` | Max concurrent open positions (0 = no cap) |
+| `DAILY_LOSS_LIMIT` | `0` | Halt new opens once realised losses today exceed this USD amount (0 = disabled) |
+| `KILL_SWITCH_FILE` | `/tmp/trader.kill` | Touch this file to halt all new opens immediately — existing positions are still risk-managed |
+| `SN_API_KEY` | — | SignalNGN API key (required when `TRADING_ENABLED=true`) |
+| `SN_API_URL` | `https://api.signal-ngn.com` | SignalNGN API base URL |
+| `SN_NATS_CREDS_FILE` | — | Path to custom NGS NATS credentials file (embedded subscribe-only key used by default) |
+| `BINANCE_API_KEY` | — | Binance API key (live mode only) |
+| `BINANCE_API_SECRET` | — | Binance API secret (live mode only) |
+
+### Signal pipeline
+
+Every incoming NGS signal passes through these checks before a trade is placed:
+
+1. **Allowlist** — fetched from `GET /config/trading` on the SN API, rebuilt every 5 minutes; only enabled trading configs are allowed
+2. **Strategy filter** — optional `STRATEGY_FILTER` prefix match
+3. **Staleness** — signals older than 2 minutes are dropped
+4. **Confidence** — `BUY`/`SHORT` signals with `confidence < 0.5` are dropped
+5. **Cooldown** — a 5-minute per-(symbol, action) cooldown prevents re-entering immediately after an open
+6. **Kill switch** — if `KILL_SWITCH_FILE` exists, new opens are skipped (closes still execute)
+7. **Daily loss limit** — queried live from the DB; counts all realised losses since midnight UTC
+8. **Direction conflict** — won't open a new position in the opposite direction to an existing one
+9. **Max positions** — won't exceed `MAX_POSITIONS` concurrent open positions
+
+### Risk management
+
+The risk loop runs every 5 minutes and evaluates every open position:
+
+| Rule | Default | Notes |
+|---|---|---|
+| **Stop-loss** | −4% from entry | Uses signal `stop_loss` if provided and > 0.1% from entry |
+| **Take-profit** | +10% from entry | Uses signal `take_profit` if provided and > 0.1% from entry |
+| **Trailing stop** | Activates at +3% unrealised gain; trails 2% behind peak | Scaled by `1/leverage` for futures; never loosens |
+| **Max hold time** | 48 hours | Position is closed regardless of P&L |
+
+Price used for evaluation: last price seen in a received NGS signal → SN price API fallback → skip tick (warning logged).
+
+### Live trade stream
+
+```bash
+# Stream all trades for an account to stdout as JSONL
+trader trades watch live
+
+# Pipe to jq for pretty-printing
+trader trades watch paper | jq .
+```
+
+Reconnects automatically every 5 seconds on disconnect. Exit with `Ctrl-C`.
+
+Each event is a JSON object:
+
+```json
+{
+  "trade_id": "engine-live-BTC-USD-1740912345678901234",
+  "account_id": "live",
+  "symbol": "BTC-USD",
+  "side": "sell",
+  "quantity": 0.021,
+  "price": 96800.0,
+  "fee": 0,
+  "market_type": "futures",
+  "timestamp": "2026-03-02T11:00:00Z",
+  "strategy": "ml_xgboost",
+  "confidence": 0.82,
+  "stop_loss": 93200.0,
+  "take_profit": 104000.0,
+  "exit_reason": "take profit"
+}
+```
+
+The SSE endpoint is also available directly:
+
+```
+GET /api/v1/accounts/{accountId}/trades/stream
+Authorization: Bearer <api-key>
+Accept: text/event-stream
+```
 
 ---
 
@@ -292,6 +412,7 @@ GET  /api/v1/accounts
 GET  /api/v1/accounts/{accountId}/portfolio
 GET  /api/v1/accounts/{accountId}/positions?status=open|closed|all
 GET  /api/v1/accounts/{accountId}/trades?symbol=&side=&market_type=&start=&end=&cursor=&limit=
+GET  /api/v1/accounts/{accountId}/trades/stream   (SSE — see Trading Engine section)
 GET  /api/v1/accounts/{accountId}/orders?status=&symbol=&cursor=&limit=
 POST /api/v1/import
 ```
