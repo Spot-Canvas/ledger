@@ -37,9 +37,9 @@ type Config struct {
 
 	// Trading engine settings
 	TradingEnabled   bool
-	TradingMode      string  // "paper" or "live"
-	TraderAccount    string  // account ID to trade under
-	StrategyFilter   string  // optional prefix filter for signal strategies
+	TradingMode      string   // "paper" or "live"
+	TraderAccounts   []string // account IDs to trade under (empty = all tenant accounts)
+	StrategyFilter   string   // optional prefix filter for signal strategies
 	PortfolioSize    float64 // total portfolio size in USD
 	PositionSizePct  float64 // default position size as % of portfolio (0–100)
 	MaxPositionSize  float64 // max position size in USD (0 = no limit)
@@ -76,7 +76,7 @@ func Load() (*Config, error) {
 		// Trading engine
 		TradingEnabled:   os.Getenv("TRADING_ENABLED") == "true",
 		TradingMode:      getEnv("TRADING_MODE", "paper"),
-		TraderAccount:    getEnv("TRADER_ACCOUNT", "paper"),
+		TraderAccounts:   parseStringList(os.Getenv("TRADER_ACCOUNTS")),
 		StrategyFilter:   os.Getenv("STRATEGY_FILTER"),
 		PortfolioSize:    parseFloat(os.Getenv("PORTFOLIO_SIZE"), 10000),
 		PositionSizePct:  parseFloat(os.Getenv("POSITION_SIZE_PCT"), 10),
@@ -148,4 +148,24 @@ func parseInt(s string, defaultValue int) int {
 		return defaultValue
 	}
 	return v
+}
+
+// parseStringList splits a comma-separated string into a trimmed slice.
+// Returns nil (not an empty slice) when s is blank so callers can
+// distinguish "not set" from "explicitly empty".
+func parseStringList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

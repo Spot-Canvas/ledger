@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -48,38 +49,39 @@ func (e *Engine) startRiskLoop(ctx context.Context) {
 	}
 }
 
-// evaluatePositions reconciles position state and evaluates risk for each position.
+// evaluatePositions reconciles position state and evaluates risk for all managed accounts.
 func (e *Engine) evaluatePositions(ctx context.Context) error {
 	// Kill switch — still allow closes, just log.
-	killActive := e.killSwitchActive()
-	if killActive {
+	if e.killSwitchActive() {
 		e.logger.Warn().Str("file", e.cfg.KillSwitchFile).Msg("kill switch active — skipping new opens in risk loop")
 	}
 
-	// Load open ledger positions.
-	openPositions, err := e.repo.ListOpenPositionsForAccount(ctx, e.cfg.TraderAccount)
-	if err != nil {
-		return err
-	}
-
-	// Build a set of symbols with open ledger positions.
-	openSymbols := make(map[string]bool)
-	for _, p := range openPositions {
-		openSymbols[p.Symbol] = true
+	// Build a set of posKey(accountID, symbol) that have open ledger positions
+	// across all managed accounts.
+	openKeys := make(map[string]bool)
+	for _, accountID := range e.accounts {
+		openPositions, err := e.repo.ListOpenPositionsForAccount(ctx, accountID)
+		if err != nil {
+			return fmt.Errorf("list open positions for %s: %w", accountID, err)
+		}
+		for _, p := range openPositions {
+			openKeys[posKey(accountID, p.Symbol)] = true
+		}
 	}
 
 	// Prune orphaned engine_position_state rows (position closed externally).
+	tenantID := e.tenantID()
 	e.posStateMu.Lock()
-	for sym := range e.posState {
-		if !openSymbols[sym] {
-			e.logger.Info().Str("symbol", sym).Msg("pruning orphaned position state")
-			tenantID := e.tenantID()
-			if err := e.repo.DeletePositionState(ctx, tenantID, sym, e.posState[sym].MarketType, e.cfg.TraderAccount); err != nil {
-				e.logger.Warn().Err(err).Str("symbol", sym).Msg("failed to delete orphaned position state")
+	for key := range e.posState {
+		if !openKeys[key] {
+			ps := e.posState[key]
+			e.logger.Info().Str("account", ps.AccountID).Str("symbol", ps.Symbol).Msg("pruning orphaned position state")
+			if err := e.repo.DeletePositionState(ctx, tenantID, ps.Symbol, ps.MarketType, ps.AccountID); err != nil {
+				e.logger.Warn().Err(err).Str("key", key).Msg("failed to delete orphaned position state")
 			}
-			delete(e.posState, sym)
+			delete(e.posState, key)
 			e.conflictMu.Lock()
-			delete(e.conflict, sym)
+			delete(e.conflict, key)
 			e.conflictMu.Unlock()
 		}
 	}
@@ -271,7 +273,7 @@ func (e *Engine) evaluatePosition(ctx context.Context, ps *PositionState) {
 			ps.PeakPrice = peak
 			ps.TrailingStop = newTrailing
 			e.posStateMu.Lock()
-			if existing, ok := e.posState[ps.Symbol]; ok {
+			if existing, ok := e.posState[posKey(ps.AccountID, ps.Symbol)]; ok {
 				existing.PeakPrice = peak
 				existing.TrailingStop = newTrailing
 			}

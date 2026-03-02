@@ -5,6 +5,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/Signal-ngn/trader/internal/config"
+	"github.com/Signal-ngn/trader/internal/ingest"
 	"github.com/Signal-ngn/trader/internal/store"
 )
 
@@ -33,10 +35,14 @@ type PositionState struct {
 	TrailingStop float64
 }
 
-// cooldownKey identifies a (product, action) pair for the cooldown map.
+// posKey returns the map key for a (accountID, symbol) pair.
+func posKey(accountID, symbol string) string { return accountID + ":" + symbol }
+
+// cooldownKey identifies a (accountID, product, action) tuple for the cooldown map.
 type cooldownKey struct {
-	symbol string
-	action string // "BUY" or "SHORT"
+	accountID string
+	symbol    string
+	action    string // "BUY" or "SHORT"
 }
 
 // Engine is the trading engine. It connects to Synadia NGS, subscribes to signals,
@@ -46,20 +52,27 @@ type Engine struct {
 	repo     *store.Repository
 	exchange Exchange
 
+	// accounts is the resolved list of account IDs this engine instance trades.
+	// Populated at Start time (from cfg.TraderAccounts or all tenant accounts).
+	accounts []string
+
+	// publisher fans out trade events to SSE subscribers after each fill.
+	publisher ingest.TradePublisher
+
 	// NGS NATS connection (separate from the ledger NATS connection)
 	ngsConn *nats.Conn
 
-	// In-memory risk state cache — keyed by symbol
+	// In-memory risk state cache — keyed by posKey(accountID, symbol)
 	posStateMu sync.RWMutex
-	posState   map[string]*PositionState // symbol → state
+	posState   map[string]*PositionState
 
-	// Per-(product,action) cooldown map
+	// Per-(accountID, product, action) cooldown map
 	cooldownMu sync.Mutex
 	cooldown   map[cooldownKey]time.Time
 
-	// Direction conflict guard — keyed by symbol, value is "long" or "short"
+	// Direction conflict guard — keyed by posKey(accountID, symbol), value is "long" or "short"
 	conflictMu sync.Mutex
-	conflict   map[string]string // symbol → open side
+	conflict   map[string]string
 
 	// Signal allowlist — rebuilt every 5 minutes from the SN API
 	allowlistMu sync.RWMutex
@@ -77,7 +90,8 @@ type Engine struct {
 }
 
 // New creates a new Engine. The Exchange is selected based on cfg.TradingMode.
-func New(cfg *config.Config, repo *store.Repository) *Engine {
+// publisher may be nil; when set, every filled trade is fanned out to SSE subscribers.
+func New(cfg *config.Config, repo *store.Repository, publisher ingest.TradePublisher) *Engine {
 	var ex Exchange
 	if cfg.TradingMode == "live" {
 		ex = NewBinanceFuturesExchange(cfg)
@@ -89,6 +103,7 @@ func New(cfg *config.Config, repo *store.Repository) *Engine {
 		cfg:       cfg,
 		repo:      repo,
 		exchange:  ex,
+		publisher: publisher,
 		posState:  make(map[string]*PositionState),
 		cooldown:  make(map[cooldownKey]time.Time),
 		conflict:  make(map[string]string),
@@ -100,8 +115,27 @@ func New(cfg *config.Config, repo *store.Repository) *Engine {
 // Start initialises the engine and runs the signal and risk loops.
 // It blocks until ctx is cancelled.
 func (e *Engine) Start(ctx context.Context) error {
+	// Resolve the account list: use cfg.TraderAccounts if set, otherwise load
+	// all accounts for the tenant from the DB.
+	if len(e.cfg.TraderAccounts) > 0 {
+		e.accounts = e.cfg.TraderAccounts
+	} else {
+		accts, err := e.repo.ListAccounts(ctx, e.tenantID())
+		if err != nil {
+			e.logger.Error().Err(err).Msg("failed to list tenant accounts — engine aborted")
+			return nil
+		}
+		for _, a := range accts {
+			e.accounts = append(e.accounts, a.ID)
+		}
+	}
+	if len(e.accounts) == 0 {
+		e.logger.Error().Msg("no accounts to trade — engine aborted (create an account first or set TRADER_ACCOUNTS)")
+		return nil
+	}
+
 	e.logger.Info().
-		Str("account", e.cfg.TraderAccount).
+		Strs("accounts", e.accounts).
 		Str("mode", e.cfg.TradingMode).
 		Msg("starting trading engine")
 
@@ -154,48 +188,54 @@ func (e *Engine) Start(ctx context.Context) error {
 	return nil
 }
 
-// loadStartupState seeds the conflict guard from open ledger positions
-// and loads engine_position_state rows into the in-memory cache.
+// loadStartupState seeds the conflict guard and position state cache for all accounts.
 func (e *Engine) loadStartupState(ctx context.Context) error {
-	// Seed conflict guard from open ledger positions.
-	// We use the default tenant — the engine is single-tenant.
-	openPositions, err := e.repo.ListOpenPositionsForAccount(ctx, e.cfg.TraderAccount)
-	if err != nil {
-		return err
-	}
-	e.conflictMu.Lock()
-	for _, p := range openPositions {
-		e.conflict[p.Symbol] = string(p.Side)
-	}
-	e.conflictMu.Unlock()
-	e.logger.Info().Int("open_positions", len(openPositions)).Msg("seeded conflict guard from ledger")
+	totalPositions, totalStates := 0, 0
 
-	// Load engine_position_state rows.
-	dbStates, err := e.repo.LoadPositionStates(ctx, e.cfg.TraderAccount)
-	if err != nil {
-		return err
-	}
-	e.posStateMu.Lock()
-	for _, s := range dbStates {
-		ps := &PositionState{
-			ID:           s.ID,
-			AccountID:    s.AccountID,
-			Symbol:       s.Symbol,
-			MarketType:   s.MarketType,
-			Side:         s.Side,
-			EntryPrice:   s.EntryPrice,
-			StopLoss:     s.StopLoss,
-			TakeProfit:   s.TakeProfit,
-			Leverage:     s.Leverage,
-			Strategy:     s.Strategy,
-			OpenedAt:     s.OpenedAt,
-			PeakPrice:    s.PeakPrice,
-			TrailingStop: s.TrailingStop,
+	for _, accountID := range e.accounts {
+		// Seed conflict guard from open ledger positions.
+		openPositions, err := e.repo.ListOpenPositionsForAccount(ctx, accountID)
+		if err != nil {
+			return fmt.Errorf("list open positions for %s: %w", accountID, err)
 		}
-		e.posState[s.Symbol] = ps
-	}
-	e.posStateMu.Unlock()
-	e.logger.Info().Int("position_states", len(dbStates)).Msg("loaded engine position states")
+		e.conflictMu.Lock()
+		for _, p := range openPositions {
+			e.conflict[posKey(accountID, p.Symbol)] = string(p.Side)
+		}
+		e.conflictMu.Unlock()
+		totalPositions += len(openPositions)
 
+		// Load engine_position_state rows.
+		dbStates, err := e.repo.LoadPositionStates(ctx, accountID)
+		if err != nil {
+			return fmt.Errorf("load position states for %s: %w", accountID, err)
+		}
+		e.posStateMu.Lock()
+		for _, s := range dbStates {
+			ps := &PositionState{
+				ID:           s.ID,
+				AccountID:    s.AccountID,
+				Symbol:       s.Symbol,
+				MarketType:   s.MarketType,
+				Side:         s.Side,
+				EntryPrice:   s.EntryPrice,
+				StopLoss:     s.StopLoss,
+				TakeProfit:   s.TakeProfit,
+				Leverage:     s.Leverage,
+				Strategy:     s.Strategy,
+				OpenedAt:     s.OpenedAt,
+				PeakPrice:    s.PeakPrice,
+				TrailingStop: s.TrailingStop,
+			}
+			e.posState[posKey(accountID, s.Symbol)] = ps
+		}
+		e.posStateMu.Unlock()
+		totalStates += len(dbStates)
+	}
+
+	e.logger.Info().
+		Int("open_positions", totalPositions).
+		Int("position_states", totalStates).
+		Msg("loaded startup state")
 	return nil
 }

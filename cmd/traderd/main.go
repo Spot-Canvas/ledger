@@ -110,13 +110,13 @@ func main() {
 
 	// Start trading engine when enabled — runs after DB is ready.
 	if cfg.TradingEnabled {
-		eng := engine.New(cfg, repo)
+		eng := engine.New(cfg, repo, srv.StreamRegistry())
 		go func() {
 			if err := eng.Start(ctx); err != nil {
 				log.Error().Err(err).Msg("trading engine error")
 			}
 		}()
-		log.Info().Str("account", cfg.TraderAccount).Str("mode", cfg.TradingMode).Msg("trading engine starting")
+		log.Info().Strs("accounts", cfg.TraderAccounts).Str("mode", cfg.TradingMode).Msg("trading engine starting")
 	}
 
 	// Connect to NATS in the background so startup doesn't block.

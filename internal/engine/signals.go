@@ -398,19 +398,6 @@ func (e *Engine) handleSignal(ctx context.Context, msg *nats.Msg) {
 		return
 	}
 
-	// 5. Cooldown check (only for opening actions).
-	if signal.Action == "BUY" || signal.Action == "SHORT" {
-		key := cooldownKey{symbol: product, action: signal.Action}
-		e.cooldownMu.Lock()
-		expiry, active := e.cooldown[key]
-		e.cooldownMu.Unlock()
-		if active && time.Now().Before(expiry) {
-			remaining := time.Until(expiry).Round(time.Second)
-			logger.Debug().Dur("remaining", remaining).Msg("cooldown active, dropping signal")
-			return
-		}
-	}
-
 	// Cache the signal price — used by the risk loop as current market price.
 	if signal.Price > 0 {
 		e.lastPriceMu.Lock()
@@ -418,6 +405,20 @@ func (e *Engine) handleSignal(ctx context.Context, msg *nats.Msg) {
 		e.lastPriceMu.Unlock()
 	}
 
-	// Route to position engine.
-	e.processSignal(ctx, signal, product, strategy)
+	// Route to position engine for each managed account.
+	for _, accountID := range e.accounts {
+		// Per-account cooldown check (only for opening actions).
+		if signal.Action == "BUY" || signal.Action == "SHORT" {
+			key := cooldownKey{accountID: accountID, symbol: product, action: signal.Action}
+			e.cooldownMu.Lock()
+			expiry, active := e.cooldown[key]
+			e.cooldownMu.Unlock()
+			if active && time.Now().Before(expiry) {
+				remaining := time.Until(expiry).Round(time.Second)
+				logger.Debug().Str("account", accountID).Dur("remaining", remaining).Msg("cooldown active, dropping signal")
+				continue
+			}
+		}
+		e.processSignal(ctx, signal, product, strategy, accountID)
+	}
 }
