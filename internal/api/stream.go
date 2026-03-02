@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/Signal-ngn/trader/internal/api/middleware"
 )
+
+const sseHeartbeatInterval = 30 * time.Second
 
 // StreamRegistry is a thread-safe fan-out registry that maps accountID → set of SSE subscribers.
 //
@@ -117,11 +120,21 @@ func (s *Server) handleTradeStream(w http.ResponseWriter, r *http.Request) {
 
 	// Stream events until client disconnects or context is cancelled.
 	ctx := r.Context()
+	heartbeat := time.NewTicker(sseHeartbeatInterval)
+	defer heartbeat.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			log.Debug().Str("account_id", accountID).Msg("SSE client disconnected")
 			return
+		case <-heartbeat.C:
+			// SSE comment — ignored by clients but keeps Cloud Run / proxies alive.
+			if _, err := fmt.Fprintf(w, ": keepalive\n\n"); err != nil {
+				log.Debug().Err(err).Str("account_id", accountID).Msg("SSE heartbeat write error, disconnecting")
+				return
+			}
+			flusher.Flush()
 		case data := <-ch:
 			// Write SSE event: "data: <json>\n\n"
 			_, err := fmt.Fprintf(w, "data: %s\n\n", data)
