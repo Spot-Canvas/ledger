@@ -35,6 +35,7 @@ type SignalPayload struct {
 	Strategy      string             `json:"strategy"`
 	Product       string             `json:"product"`
 	Exchange      string             `json:"exchange"`
+	AccountID     string             `json:"account_id"`  // target account; empty = all accounts (legacy)
 	Action        string             `json:"action"`
 	Market        string             `json:"market"`
 	Leverage      int                `json:"leverage"`
@@ -341,6 +342,26 @@ func (e *Engine) runSignalLoop(ctx context.Context) {
 	}
 }
 
+// resolveTargetAccounts returns the accounts a signal should be routed to.
+//
+// If signalAccountID is empty (legacy signals that predate the account_id
+// field), all managed accounts are targeted and ok is true.
+//
+// If signalAccountID is non-empty, only that account is targeted. ok is false
+// when the requested account is not in the managed list, indicating the signal
+// should be dropped.
+func resolveTargetAccounts(managed []string, signalAccountID string) (targets []string, ok bool) {
+	if signalAccountID == "" {
+		return managed, true
+	}
+	for _, a := range managed {
+		if a == signalAccountID {
+			return []string{signalAccountID}, true
+		}
+	}
+	return nil, false
+}
+
 // handleSignal processes a single signal message from NGS.
 func (e *Engine) handleSignal(ctx context.Context, msg *nats.Msg) {
 	exchange, product, granularity, strategy := parseSubject(msg.Subject)
@@ -405,8 +426,18 @@ func (e *Engine) handleSignal(ctx context.Context, msg *nats.Msg) {
 		e.lastPriceMu.Unlock()
 	}
 
-	// Route to position engine for each managed account.
-	for _, accountID := range e.accounts {
+	// Build the set of accounts this signal targets.
+	// If the signal carries an account_id, route only to that account (provided
+	// it is in the engine's managed list). If account_id is absent (legacy
+	// signals), fall back to routing to all managed accounts.
+	targetAccounts, ok := resolveTargetAccounts(e.accounts, signal.AccountID)
+	if !ok {
+		logger.Debug().Str("account_id", signal.AccountID).Msg("signal account_id not in managed accounts, dropping")
+		return
+	}
+
+	// Route to position engine for each target account.
+	for _, accountID := range targetAccounts {
 		// Per-account cooldown check (only for opening actions).
 		if signal.Action == "BUY" || signal.Action == "SHORT" {
 			key := cooldownKey{accountID: accountID, symbol: product, action: signal.Action}

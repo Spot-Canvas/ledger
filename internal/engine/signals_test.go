@@ -120,6 +120,93 @@ func TestBuildSubject_FullySpecified(t *testing.T) {
 	}
 }
 
+// ── resolveTargetAccounts ─────────────────────────────────────────────────────
+
+func TestResolveTargetAccounts_EmptyAccountID_RoutesToAll(t *testing.T) {
+	managed := []string{"default", "paper", "live"}
+	targets, ok := resolveTargetAccounts(managed, "")
+	if !ok {
+		t.Fatal("empty account_id should be ok")
+	}
+	if len(targets) != len(managed) {
+		t.Fatalf("want %d targets, got %d", len(managed), len(targets))
+	}
+	for i, a := range managed {
+		if targets[i] != a {
+			t.Errorf("target[%d]: want %q, got %q", i, a, targets[i])
+		}
+	}
+}
+
+func TestResolveTargetAccounts_MatchedAccountID_RoutesToOne(t *testing.T) {
+	managed := []string{"default", "paper", "live"}
+	targets, ok := resolveTargetAccounts(managed, "paper")
+	if !ok {
+		t.Fatal("known account_id should be ok")
+	}
+	if len(targets) != 1 || targets[0] != "paper" {
+		t.Fatalf("want [paper], got %v", targets)
+	}
+}
+
+func TestResolveTargetAccounts_DefaultAccount_RoutesToOne(t *testing.T) {
+	managed := []string{"default", "live"}
+	targets, ok := resolveTargetAccounts(managed, "default")
+	if !ok {
+		t.Fatal("default account should be found")
+	}
+	if len(targets) != 1 || targets[0] != "default" {
+		t.Fatalf("want [default], got %v", targets)
+	}
+}
+
+func TestResolveTargetAccounts_UnknownAccountID_Dropped(t *testing.T) {
+	managed := []string{"default", "paper"}
+	targets, ok := resolveTargetAccounts(managed, "live")
+	if ok {
+		t.Fatal("unknown account_id should not be ok")
+	}
+	if targets != nil {
+		t.Fatalf("want nil targets, got %v", targets)
+	}
+}
+
+func TestResolveTargetAccounts_EmptyManagedList_EmptyAccountID_RoutesToAll(t *testing.T) {
+	// No accounts managed — empty slice passed through unchanged.
+	targets, ok := resolveTargetAccounts([]string{}, "")
+	if !ok {
+		t.Fatal("empty account_id with empty managed list should be ok")
+	}
+	if len(targets) != 0 {
+		t.Fatalf("want empty targets, got %v", targets)
+	}
+}
+
+func TestResolveTargetAccounts_EmptyManagedList_SpecificAccountID_Dropped(t *testing.T) {
+	// No accounts managed — any specific account_id must be dropped.
+	_, ok := resolveTargetAccounts([]string{}, "default")
+	if ok {
+		t.Fatal("specific account_id with no managed accounts should be dropped")
+	}
+}
+
+func TestResolveTargetAccounts_SingleAccount_MatchedID_RoutesToOne(t *testing.T) {
+	targets, ok := resolveTargetAccounts([]string{"default"}, "default")
+	if !ok {
+		t.Fatal("should be ok")
+	}
+	if len(targets) != 1 || targets[0] != "default" {
+		t.Fatalf("want [default], got %v", targets)
+	}
+}
+
+func TestResolveTargetAccounts_SingleAccount_WrongID_Dropped(t *testing.T) {
+	_, ok := resolveTargetAccounts([]string{"default"}, "paper")
+	if ok {
+		t.Fatal("wrong account_id should be dropped")
+	}
+}
+
 // ── signal filter checks (stale, confidence, cooldown) ───────────────────────
 // These are tested via handleSignal indirectly through the engine, but we can
 // exercise the timestamp staleness boundary directly.
