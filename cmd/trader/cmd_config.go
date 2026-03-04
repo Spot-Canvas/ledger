@@ -46,6 +46,15 @@ var configShowCmd = &cobra.Command{
 		tidSrc := configSource("tenant_id")
 		rows = append(rows, []string{"tenant_id", tid, tidSrc})
 
+		// Platform keys
+		for _, key := range []string{"api_url", "web_url", "ingestion_url", "nats_url", "nats_creds_file"} {
+			rows = append(rows, []string{
+				key,
+				viper.GetString(key),
+				configSource(key),
+			})
+		}
+
 		fmt.Printf("%-20s %-55s %s\n", "KEY", "VALUE", "SOURCE")
 		fmt.Printf("%-20s %-55s %s\n",
 			strings.Repeat("-", 20),

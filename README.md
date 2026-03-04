@@ -23,17 +23,7 @@ A Go trading engine for the Signal Ngn ecosystem. It ingests trade events via NA
 
 ### Installation
 
-**1. Install the `sn` CLI** (needed for login):
-
-```bash
-# go install
-go install github.com/Signal-ngn/sn/cmd/sn@latest
-
-# Homebrew (macOS)
-brew install Signal-ngn/sn/sn
-```
-
-**2. Install the `trader` CLI:**
+**Install the `trader` CLI:**
 
 ```bash
 # go install
@@ -46,11 +36,13 @@ brew install --cask Signal-ngn/trader/ledger
 ### Authentication
 
 ```bash
-sn auth login          # opens browser — logs you in and stores your API key
-trader accounts list   # works immediately; picks up the key from ~/.config/sn/config.yaml
+trader auth login      # opens browser — logs you in and stores your API key
+trader accounts list   # works immediately
 ```
 
-For trading bots or CI, skip `sn` entirely and set `TRADER_API_KEY` directly:
+If you previously ran `sn auth login`, the key from `~/.config/sn/config.yaml` is picked up automatically — no re-login needed.
+
+For trading bots or CI, set `TRADER_API_KEY` directly:
 
 ```bash
 export TRADER_API_KEY=your-api-key
@@ -134,11 +126,144 @@ trader import trades.json --json   # show full response JSON
 
 The file must be a JSON object with a `"trades"` array matching the [trade event format](#nats-trade-events). Prints `Total / Inserted / Duplicates / Errors` and exits non-zero if any errors occurred.
 
+#### Auth
+
+```bash
+trader auth login      # open browser, complete OAuth, write api_key to config
+trader auth logout     # remove api_key from ~/.config/trader/config.yaml
+trader auth status     # show whether you are authenticated and which key is active
+```
+
+#### Auth login flow
+
+`trader auth login` opens your browser to the platform login page, listens for the OAuth callback on a local port, writes the `api_key` to `~/.config/trader/config.yaml`, and prints `Authenticated as <email>`.
+
+If the browser cannot open automatically the URL is printed for manual navigation. The command times out after 120 seconds.
+
+#### Strategies
+
+```bash
+trader strategies list                          # list all built-in and user strategies
+trader strategies list --active                 # only active user strategies + all built-ins
+trader strategies list --json
+
+trader strategies get <id>                      # detail view + source code (if any)
+trader strategies get 42 --json
+
+trader strategies validate --name my_strat --file strat.star   # validate source file
+trader strategies create --name my_strat --file strat.star     # create user strategy
+trader strategies create --name x --file x.star --description "My strat" --params '{"THRESHOLD":2.0}'
+trader strategies update 42 --file updated.star                # update source
+trader strategies activate 42
+trader strategies deactivate 42
+trader strategies delete 42
+
+# Backtest a user strategy
+trader strategies backtest 42 \
+  --exchange coinbase --product BTC-USD --granularity ONE_HOUR
+trader strategies backtest 42 \
+  --exchange coinbase --product BTC-USD --granularity ONE_HOUR \
+  --mode futures-long --leverage 5
+```
+
+`strategies list` output columns: `TYPE` (`builtin`/`user`), `NAME`, `DESCRIPTION`, `ACTIVE` (`yes`/`no` for user, `-` for built-in).
+
+#### Trading
+
+```bash
+trader trading list                                  # all trading configs
+trader trading list live                             # filtered to account
+trader trading list --enabled                        # only enabled configs
+trader trading list --json
+
+trader trading get live coinbase BTC-USD             # detail view
+trader trading get live coinbase BTC-USD --json
+
+# Create or update a config (unset flags preserve existing values)
+trader trading set live coinbase BTC-USD \
+  --granularity ONE_HOUR --spot ml_xgboost --enable
+trader trading set live coinbase BTC-USD \
+  --params ml_xgboost:confidence=0.80 --params ml_xgboost:exit_confidence=0.40
+trader trading set live coinbase BTC-USD --params ml_xgboost:clear   # remove all params
+trader trading set live coinbase BTC-USD --disable
+
+trader trading delete live coinbase BTC-USD          # delete a config
+```
+
+`trading set` flags: `--granularity`, `--long`, `--short`, `--spot`, `--long-leverage`, `--short-leverage`, `--trend-filter`, `--no-trend-filter`, `--enable`, `--disable`, `--params`.
+
+#### Price
+
+```bash
+trader price BTC-USD                                # live price (default: coinbase, ONE_MINUTE)
+trader price BTC-USD --exchange kraken --granularity ONE_HOUR
+trader price BTC-USD --json
+
+trader price --all                                  # all enabled products
+trader price --all --json                           # JSON array of successful results
+```
+
+Output columns: `EXCHANGE`, `PRODUCT`, `PRICE`, `OPEN`, `HIGH`, `LOW`, `VOLUME`, `AGE`. The `AGE` column is prefixed with `!` when the price is more than 1 hour stale.
+
+#### Backtest
+
+```bash
+# Submit and wait for result
+trader backtest run \
+  --exchange coinbase --product BTC-USD --strategy ml_xgboost --granularity ONE_HOUR
+trader backtest run \
+  --exchange coinbase --product BTC-USD --strategy ml_xgboost --granularity ONE_HOUR \
+  --mode futures-long --leverage 5 --trend-filter \
+  --params confidence=0.80 --params exit_confidence=0.40
+
+# No-wait mode — print job ID and exit
+trader backtest run --exchange coinbase --product BTC-USD \
+  --strategy ml_xgboost --granularity ONE_HOUR --no-wait
+
+# List and inspect results
+trader backtest list                                # 20 most recent (default)
+trader backtest list --strategy ml_xgboost --limit 50
+trader backtest list --sort winrate
+trader backtest list --limit 0                      # all results
+trader backtest list --json
+
+trader backtest get 123                             # full detail table
+trader backtest get 123 --json
+
+trader backtest job <job-id>                        # poll job status / fetch result
+```
+
+`backtest run` required flags: `--exchange`, `--product`, `--strategy`, `--granularity`. Optional: `--mode` (default `spot`), `--start`, `--end`, `--leverage`, `--trend-filter`, `--no-wait`, `--params`.
+
+#### Signals
+
+```bash
+# Stream all signals from your enabled trading configs (Ctrl-C to stop)
+trader signals
+
+# Filter to specific exchange/product/granularity/strategy
+trader signals --exchange coinbase --product BTC-USD
+trader signals --exchange coinbase --product BTC-USD --granularity ONE_HOUR
+trader signals --strategy ml_xgboost
+
+# Machine-readable output (one JSON object per line)
+trader signals --json
+```
+
+On startup `trader signals`:
+1. Calls `GET /config/trading` to build an allowlist of your enabled strategy slots
+2. Connects to NATS at `nats_url` using embedded read-only credentials
+3. Subscribes to `signals.<exchange>.<product>.<granularity>.<strategy>` using wildcards for unset filters
+4. Only prints signals that match your allowlist
+
+Use `nats_creds_file` to override the embedded credentials (e.g., for custom NGS accounts).
+
 #### Config
 
 ```bash
 trader config show                              # show all config values and sources
 trader config set trader_url https://...        # override service URL
+trader config set api_url https://...           # override platform API URL
 trader config get trader_url
 ```
 
@@ -149,11 +274,19 @@ Config file: `~/.config/trader/config.yaml`
 | `trader_url` | `https://signalngn-trader-potbdcvufa-ew.a.run.app` | `TRADER_URL` |
 | `api_key` | _(from `~/.config/sn/config.yaml`)_ | `TRADER_API_KEY` |
 | `tenant_id` | _(resolved automatically)_ | `TRADER_TENANT_ID` |
+| `api_url` | `https://signalngn-api-potbdcvufa-ew.a.run.app` | `TRADER_API_URL` |
+| `web_url` | _(none)_ | `TRADER_WEB_URL` |
+| `ingestion_url` | `https://signalngn-ingestion-potbdcvufa-ew.a.run.app` | `TRADER_INGESTION_URL` |
+| `nats_url` | `tls://connect.ngs.global` | `TRADER_NATS_URL` |
+| `nats_creds_file` | _(embedded credentials)_ | `TRADER_NATS_CREDS_FILE` |
 
 #### Global flags
 
 ```bash
-trader --trader-url http://localhost:8080 accounts list   # one-off URL override
+trader --trader-url http://localhost:8080 accounts list   # ledger URL override
+trader --api-url http://localhost:9090 strategies list    # platform API URL override
+trader --ingestion-url http://localhost:9091 strategies validate --name x --file x.star
+trader --web-url http://localhost:3000 auth login         # web app URL override
 trader --json accounts list                               # JSON output (any command)
 ```
 

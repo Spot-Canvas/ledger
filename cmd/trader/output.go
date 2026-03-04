@@ -118,3 +118,19 @@ func fmtTime(t time.Time) string {
 func fmtTimeShort(t time.Time) string {
 	return t.UTC().Format("01-02 15:04:05")
 }
+
+// fmtBool converts a bool to "yes"/"no".
+func fmtBool(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
+// fmtLeverage formats a leverage value, returning "-" for 0 (spot/unset).
+func fmtLeverage(n int) string {
+	if n == 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%dx", n)
+}

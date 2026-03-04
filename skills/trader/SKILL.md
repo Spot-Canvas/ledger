@@ -32,15 +32,15 @@ go install github.com/Signal-ngn/trader/cmd/trader@latest
 The CLI reads your API key from three places, in order:
 
 1. `TRADER_API_KEY` env var
-2. `api_key` in `~/.config/trader/config.yaml`
-3. `api_key` in `~/.config/sn/config.yaml` (written by `sn auth login`)
+2. `api_key` in `~/.config/trader/config.yaml` (written by `trader auth login`)
+3. `api_key` in `~/.config/sn/config.yaml` (fallback for users who logged in via sn)
 
 ```bash
-# One-time browser login via the sn CLI
-sn auth login
-trader accounts list   # picks up key automatically
+# One-time browser login (primary path — no sn required)
+trader auth login
+trader accounts list   # works immediately
 
-# For bots / CI — no sn login needed
+# For bots / CI — no login needed
 export TRADER_API_KEY=your-api-key
 trader accounts list
 ```
@@ -55,12 +55,16 @@ These work on every command:
 
 | Flag | Description |
 |---|---|
-| `--trader-url <url>` | Override service URL for this invocation |
+| `--trader-url <url>` | Override ledger service URL for this invocation |
+| `--api-url <url>` | Override platform API URL for this invocation |
+| `--ingestion-url <url>` | Override ingestion server URL for this invocation |
+| `--web-url <url>` | Override web app URL for this invocation |
 | `--json` | Output raw JSON instead of the default table |
 | `--version` | Print CLI version |
 
 ```bash
 trader --trader-url http://localhost:8080 accounts list
+trader --api-url http://localhost:9090 strategies list
 trader --json portfolio live
 ```
 
@@ -323,12 +327,181 @@ Required fields: `tenant_id`, `trade_id`, `account_id`, `symbol`, `side`, `quant
 
 ---
 
+### auth
+
+```bash
+trader auth login      # open browser OAuth flow; write api_key to ~/.config/trader/config.yaml
+trader auth logout     # remove api_key from config
+trader auth status     # show whether authenticated; print masked key
+```
+
+`auth login` builds the URL as `{web_url}/oauth/start?cli_port=<port>`. Falls back to `api_url` if `web_url` is not set. Times out after 120 seconds.
+
+---
+
+### strategies
+
+```bash
+trader strategies list                          # all built-in + user strategies
+trader strategies list --active                 # only active user strategies + all built-ins
+trader strategies list --json
+
+trader strategies get <id>                      # detail + optional source code
+trader strategies get 42 --json
+
+trader strategies validate --name <name> --file <path>    # validate source file
+trader strategies create --name <name> --file <path>      # create user strategy
+trader strategies create --name x --file x.star \
+  --description "..." --params '{"THRESHOLD":2.0}'
+trader strategies update <id> --file <path>               # update source
+trader strategies update 42 --file updated.star --description "new desc"
+trader strategies activate <id>
+trader strategies deactivate <id>
+trader strategies delete <id>
+
+# Backtest a user strategy (synchronous)
+trader strategies backtest <id> \
+  --exchange coinbase --product BTC-USD --granularity ONE_HOUR
+trader strategies backtest 42 \
+  --exchange coinbase --product BTC-USD --granularity ONE_HOUR \
+  --mode futures-long --leverage 5 --json
+```
+
+`strategies list` output: `TYPE` (`builtin`/`user`), `NAME`, `DESCRIPTION`, `ACTIVE` (`-` for built-ins, `yes`/`no` for user).
+
+`strategies backtest` flags: `--exchange` (req), `--product` (req), `--granularity` (req), `--mode` (default `spot`), `--start`, `--end`, `--leverage`.
+
+---
+
+### trading
+
+```bash
+trader trading list                             # all trading configs
+trader trading list live                        # filter by account ID
+trader trading list --enabled                   # only enabled configs
+trader trading list --json
+
+trader trading get <account> <exchange> <product>
+trader trading get live coinbase BTC-USD
+trader trading get live coinbase BTC-USD --json
+
+# Create or update (unset flags preserve existing values)
+trader trading set <account> <exchange> <product> [flags]
+trader trading set live coinbase BTC-USD --granularity ONE_HOUR --spot ml_xgboost --enable
+trader trading set live coinbase BTC-USD \
+  --params ml_xgboost:confidence=0.80 --params ml_xgboost:exit_confidence=0.40
+trader trading set live coinbase BTC-USD --params ml_xgboost:clear   # remove all params
+trader trading set live coinbase BTC-USD --disable
+trader trading set live coinbase BTC-USD --json
+
+trader trading delete <account> <exchange> <product>
+trader trading delete live coinbase BTC-USD
+```
+
+`trading set` flags:
+
+| Flag | Description |
+|---|---|
+| `--granularity` | Candle granularity (e.g. `ONE_HOUR`) |
+| `--long` | Long strategies (comma-separated) |
+| `--short` | Short strategies (comma-separated) |
+| `--spot` | Spot strategies (comma-separated) |
+| `--long-leverage` | Long leverage multiplier |
+| `--short-leverage` | Short leverage multiplier |
+| `--trend-filter` | Enable trend filter |
+| `--no-trend-filter` | Disable trend filter |
+| `--enable` | Enable the config |
+| `--disable` | Disable the config |
+| `--params` | `<strategy>:<key>=<value>` or `<strategy>:clear` (repeatable) |
+
+---
+
+### price
+
+```bash
+trader price <product>                          # live price, default exchange=coinbase, granularity=ONE_MINUTE
+trader price BTC-USD
+trader price BTC-USD --exchange kraken --granularity ONE_HOUR
+trader price BTC-USD --json
+
+trader price --all                              # all enabled products (concurrent)
+trader price --all --json                       # JSON array of successful results only
+```
+
+Output columns: `EXCHANGE`, `PRODUCT`, `PRICE`, `OPEN`, `HIGH`, `LOW`, `VOLUME`, `AGE`.  
+`AGE` is prefixed with `!` when the price is stale (> 1 hour since `last_update`).
+
+---
+
+### backtest
+
+```bash
+# Submit and wait for result (synchronous)
+trader backtest run \
+  --exchange coinbase --product BTC-USD --strategy ml_xgboost --granularity ONE_HOUR
+trader backtest run \
+  --exchange coinbase --product BTC-USD --strategy ml_xgboost --granularity ONE_HOUR \
+  --mode futures-long --leverage 5 --trend-filter \
+  --params confidence=0.80 --params exit_confidence=0.40
+
+# No-wait: print job ID and exit
+trader backtest run --exchange coinbase --product BTC-USD \
+  --strategy ml_xgboost --granularity ONE_HOUR --no-wait
+
+# List results
+trader backtest list                            # 20 most recent
+trader backtest list --strategy ml_xgboost
+trader backtest list --sort winrate             # highest win rate first
+trader backtest list --limit 0                  # all results
+trader backtest list --json
+
+# Get full detail
+trader backtest get <id>
+trader backtest get 123 --json
+
+# Poll a job
+trader backtest job <job-id>                    # prints result or poll hint
+```
+
+`backtest run` required flags: `--exchange`, `--product`, `--strategy`, `--granularity`.  
+Optional: `--mode` (default `spot`), `--start`, `--end`, `--leverage`, `--trend-filter`, `--no-wait`, `--params` (repeatable `key=value`).
+
+---
+
+### signals
+
+```bash
+# Stream all signals from your enabled trading configs
+trader signals
+
+# Filter
+trader signals --exchange coinbase --product BTC-USD
+trader signals --granularity ONE_HOUR
+trader signals --strategy ml_xgboost
+
+# Machine-readable
+trader signals --json   # one JSON object per signal line
+```
+
+On startup the command:
+1. Calls `GET /config/trading` to build an allowlist of your enabled strategy slots
+2. Connects to NATS at `nats_url` using embedded read-only NGS credentials
+3. Subscribes to `signals.<exchange>.<product>.<granularity>.<strategy>` with `*`/`>` wildcards for unset filters
+4. Filters received signals to your allowlist (prefix-tolerant: `ml_xgboost_short` matches `ml_xgboost`)
+
+Press `Ctrl-C` to stop. Prints `Unsubscribing...` on exit.
+
+Use `nats_creds_file` config key to override the embedded credentials.
+
+---
+
 ### config
 
 ```bash
 trader config show                        # all resolved values and their sources
 trader config set trader_url https://...  # write to ~/.config/trader/config.yaml
 trader config set api_key sk-...
+trader config set api_url https://my-api.example.com
 trader config get trader_url
 ```
 
@@ -339,10 +512,65 @@ Config file: `~/.config/trader/config.yaml`
 | `trader_url` | `https://signalngn-trader-potbdcvufa-ew.a.run.app` | `TRADER_URL` |
 | `api_key` | *(from `~/.config/sn/config.yaml`)* | `TRADER_API_KEY` |
 | `tenant_id` | *(resolved via `/auth/resolve` on first use)* | `TRADER_TENANT_ID` |
+| `api_url` | `https://signalngn-api-potbdcvufa-ew.a.run.app` | `TRADER_API_URL` |
+| `web_url` | *(none)* | `TRADER_WEB_URL` |
+| `ingestion_url` | `https://signalngn-ingestion-potbdcvufa-ew.a.run.app` | `TRADER_INGESTION_URL` |
+| `nats_url` | `tls://connect.ngs.global` | `TRADER_NATS_URL` |
+| `nats_creds_file` | *(embedded credentials)* | `TRADER_NATS_CREDS_FILE` |
 
 ---
 
 ## Common bot patterns
+
+### Check live price before sizing a position
+
+```bash
+# Get the current BTC-USD price
+PRICE=$(trader price BTC-USD --json | jq '.close')
+
+# Get price for a specific exchange/granularity
+PRICE=$(trader price BTC-USD --exchange coinbase --granularity ONE_HOUR --json | jq '.close')
+
+# Check all enabled products — useful for scanning before entering positions
+trader price --all --json | jq '.[] | {product: .product_id, price: .close}'
+```
+
+### Check live price staleness before acting
+
+```bash
+# fmtAge returns "!2h 15m" when stale (> 1 hour). Use --json to get the raw timestamp.
+LAST_UPDATE=$(trader price BTC-USD --json | jq -r '.last_update')
+```
+
+### List enabled trading configs
+
+```bash
+# See what the bot has active
+trader trading list --enabled --json
+
+# Check a specific config
+trader trading get live coinbase BTC-USD --json
+```
+
+### Run a backtest before enabling a strategy
+
+```bash
+# Synchronous run — waits for result
+trader backtest run \
+  --exchange coinbase --product BTC-USD \
+  --strategy ml_xgboost --granularity ONE_HOUR \
+  --params confidence=0.80 --json
+
+# List recent backtests sorted by win rate
+trader backtest list --strategy ml_xgboost --sort winrate --json | jq '.results[:5]'
+```
+
+### Stream signals and act on them in a script
+
+```bash
+# Stream as JSON lines, pipe to jq for filtering
+trader signals --json | jq --unbuffered 'select(.action == "BUY" and .confidence >= 0.8)'
+```
 
 ### Check available balance before sizing a position
 

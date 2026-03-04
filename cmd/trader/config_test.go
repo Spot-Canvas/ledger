@@ -159,6 +159,26 @@ func TestResolveTenantID_FetchesFromServer(t *testing.T) {
 	}
 }
 
+// ---- config key validation tests ----
+
+func TestIsValidKey_AcceptsNewPlatformKeys(t *testing.T) {
+	newKeys := []string{"api_url", "web_url", "ingestion_url", "nats_url", "nats_creds_file"}
+	for _, k := range newKeys {
+		if !isValidKey(k) {
+			t.Errorf("expected %q to be a valid config key", k)
+		}
+	}
+}
+
+func TestIsValidKey_RejectsUnknownKey(t *testing.T) {
+	if isValidKey("unknown_key") {
+		t.Error("expected unknown_key to be rejected")
+	}
+	if isValidKey("admin_secret") {
+		t.Error("expected admin_secret to be rejected")
+	}
+}
+
 func TestResolveTenantID_401Error(t *testing.T) {
 	resetViper(t)
 

@@ -36,6 +36,9 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().String("trader-url", "", "Trader service URL (overrides config/env)")
+	rootCmd.PersistentFlags().String("api-url", "", "Platform API URL (overrides config/env)")
+	rootCmd.PersistentFlags().String("ingestion-url", "", "Ingestion server URL (overrides config/env)")
+	rootCmd.PersistentFlags().String("web-url", "", "Web app URL (overrides config/env)")
 	rootCmd.PersistentFlags().Bool("json", false, "Output as JSON")
 
 	rootCmd.Version = version
@@ -44,4 +47,7 @@ func init() {
 func initConfig() {
 	loadConfig()
 	_ = viper.BindPFlag("trader_url", rootCmd.PersistentFlags().Lookup("trader-url"))
+	_ = viper.BindPFlag("api_url", rootCmd.PersistentFlags().Lookup("api-url"))
+	_ = viper.BindPFlag("ingestion_url", rootCmd.PersistentFlags().Lookup("ingestion-url"))
+	_ = viper.BindPFlag("web_url", rootCmd.PersistentFlags().Lookup("web-url"))
 }

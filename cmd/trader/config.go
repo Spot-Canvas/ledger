@@ -14,11 +14,17 @@ import (
 )
 
 // validConfigKeys are the keys writable via `trader config set`.
-var validConfigKeys = []string{"trader_url", "tenant_id", "api_key"}
+var validConfigKeys = []string{
+	"trader_url", "tenant_id", "api_key",
+	"api_url", "web_url", "ingestion_url", "nats_url", "nats_creds_file",
+}
 
 // configDefaults holds built-in defaults.
 var configDefaults = map[string]string{
-	"trader_url": "https://signalngn-trader-potbdcvufa-ew.a.run.app",
+	"trader_url":    "https://signalngn-trader-potbdcvufa-ew.a.run.app",
+	"api_url":       "https://signalngn-api-potbdcvufa-ew.a.run.app",
+	"ingestion_url": "https://signalngn-ingestion-potbdcvufa-ew.a.run.app",
+	"nats_url":      "tls://connect.ngs.global",
 }
 
 // snViper is a read-only viper instance pointing at ~/.config/sn/config.yaml.
@@ -90,7 +96,7 @@ func resolveAPIKey() (string, string, error) {
 		return key, "[sn]", nil
 	}
 
-	return "", "", fmt.Errorf("no API key found — run `sn auth login` or set TRADER_API_KEY")
+	return "", "", fmt.Errorf("no API key found — run `trader auth login` or set TRADER_API_KEY")
 }
 
 // resolveTenantID returns the tenant ID using priority order:
