@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,16 +29,37 @@ func (e *Engine) processSignal(ctx context.Context, signal SignalPayload, produc
 		return
 	}
 
-	// Fetch trading config for this product to get market type and leverage.
+	// Fetch trading config for this account+product to get market type and leverage.
 	tradingConfigs, err := fetchTradingConfigs(ctx, e.cfg)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to fetch trading configs, skipping signal")
 		return
 	}
-	tradingConfig, ok := tradingConfigs[product]
+	tradingConfig, ok := tradingConfigs[tradingConfigKey{accountID: accountID, productID: product}]
 	if !ok {
-		logger.Warn().Msg("no trading config for product, skipping signal")
+		logger.Warn().Msg("no trading config for account+product, skipping signal")
 		return
+	}
+
+	// Validate that the signal strategy is configured for this account+product.
+	if signal.Action == "BUY" || signal.Action == "SHORT" {
+		var allowedStrategies []string
+		if signal.Action == "BUY" {
+			allowedStrategies = tradingConfig.StrategiesLong
+		} else {
+			allowedStrategies = tradingConfig.StrategiesShort
+		}
+		strategyAllowed := false
+		for _, s := range allowedStrategies {
+			if s == strategy || strings.HasPrefix(strategy, s+"_") || strings.HasPrefix(strategy, s+"+") {
+				strategyAllowed = true
+				break
+			}
+		}
+		if !strategyAllowed {
+			logger.Debug().Str("strategy", strategy).Msg("strategy not in trading config for account+product, skipping signal")
+			return
+		}
 	}
 
 	switch signal.Action {

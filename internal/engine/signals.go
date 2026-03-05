@@ -53,6 +53,7 @@ type SignalPayload struct {
 // TradingConfig mirrors the SignalNGN server model for a trading config.
 type TradingConfig struct {
 	ID              int                           `json:"id"`
+	AccountID       string                        `json:"account_id"`
 	Exchange        string                        `json:"exchange"`
 	ProductID       string                        `json:"product_id"`
 	Granularity     string                        `json:"granularity"`
@@ -76,8 +77,14 @@ type signalKey struct {
 // signalAllowlist is the set of signal keys the user is allowed to trade.
 type signalAllowlist map[signalKey]struct{}
 
-// tradingConfigByProduct maps product → TradingConfig for fast lookup.
-type tradingConfigByProduct map[string]*TradingConfig
+// tradingConfigKey uniquely identifies a trading config by account and product.
+type tradingConfigKey struct {
+	accountID string
+	productID string
+}
+
+// tradingConfigByProduct maps (accountID, productID) → TradingConfig for fast lookup.
+type tradingConfigByProduct map[tradingConfigKey]*TradingConfig
 
 // allows returns true when the given signal tuple matches the allowlist.
 // Strategy matching uses prefix matching: "ml_xgboost+trend" matches "ml_xgboost".
@@ -165,7 +172,7 @@ func fetchTradingConfigs(ctx context.Context, cfg *config.Config) (tradingConfig
 	for i := range configs {
 		tc := configs[i]
 		if tc.Enabled {
-			m[tc.ProductID] = &tc
+			m[tradingConfigKey{accountID: tc.AccountID, productID: tc.ProductID}] = &tc
 		}
 	}
 	return m, nil
