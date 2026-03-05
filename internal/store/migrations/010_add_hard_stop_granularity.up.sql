@@ -1,4 +1,4 @@
--- Migration 007: Add hard_stop and granularity to engine_position_state.
+-- Migration 010: Add hard_stop and granularity to engine_position_state.
 --
 -- hard_stop  — leverage-scaled circuit-breaker price computed at entry.
 -- granularity — candle granularity from the trading config at entry time.
