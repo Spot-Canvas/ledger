@@ -73,3 +73,13 @@
 - [ ] 8.3 Open a paper position on the engine (via test signal), let it run and verify hard stop exit appears in logs with correct `"Layer 2: ..."` exit_reason in the ledger trade record
 - [ ] 8.4 Verify trailing stop state is persisted: open a paper position, let it profit past 1× SL distance, restart the engine, confirm `peak_price` and `trailing_stop` are restored from DB
 - [ ] 8.5 Run a 1h futures-short backtest on XLM or SUI with the updated backtester and confirm max drawdown is bounded by the hard stop (no 100%+ DD)
+
+## 9. Follow-up: risk-adjusted training labels (separate change, requires retraining)
+
+> **Do not implement in this change.** Complete group 8 first and let the risk manager run in
+> production for 30–60 days to collect real exit-reason data before retraining.
+
+- [ ] 9.1 Add `--risk-adjusted-labels` flag to `export-training-data`. When set, instead of labeling each example with `candles[i+lookahead].Close`, walk candles `i+1 … i+lookahead` through `risk.Evaluate(pos, candle.High, candle.Low, candle.Close, candle.Timestamp)` and label based on the actual risk-adjusted exit return (the point where the risk manager would have closed, or the horizon close if no exit fired)
+- [ ] 9.2 Parameterise the export tool with `--leverage` and `--market-type` flags so `ComputeHardStop` and `MaxHoldDuration` can be called correctly per product/strategy during label simulation
+- [ ] 9.3 Retrain XGBoost, 5m transformer, and 1h transformer models on risk-adjusted labels for futures products; compare held-out Sharpe and max DD against models trained on raw labels to validate the change is an improvement
+- [ ] 9.4 Keep raw-label training as the default (`--risk-adjusted-labels` is opt-in) so spot models — where the mismatch is less severe — are unaffected until explicitly validated
