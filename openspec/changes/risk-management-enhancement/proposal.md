@@ -31,7 +31,8 @@ Backtesting revealed that the 1h transformer model on futures-short caused liqui
 
 ## Impact
 
-- **Trading engine (server):** Core position management loop gains hard stop check, trailing stop state machine, candle counter, and exit priority resolver. All changes are engine-side; no signal format changes required.
-- **Trade event publisher:** Engine-generated exits will populate `exit_reason` with one of the structured enum values above.
-- **Backtester:** Should be updated to simulate the same layered exit logic so backtest results reflect live behaviour; this is out of scope for this change but tracked as follow-up.
-- **No API or CLI changes required** for the initial implementation — exit reasons are observable through existing trade event fields.
+- **New Go library (`github.com/Signal-ngn/risk`):** All exit-decision logic extracted into a standalone zero-dependency module. Both the trading engine and the backtester import it, guaranteeing identical behaviour in live and simulation.
+- **Trading engine (server):** Core position management loop delegates to the library; gains hard stop, SL-distance trailing stop, per-strategy time limits, and exit priority. No signal format changes required.
+- **Trade event publisher:** Engine-generated exits will populate `exit_reason` with a structured string from the library.
+- **Backtester (`spot-canvas-app`):** Wired to the same library so drawdown and liquidation events are correctly simulated. This fixes the core gap that motivated this change — the 1h futures backtest results will now reflect the hard stop protection.
+- **No API or CLI changes required** — exit reasons are observable through existing trade event fields.
