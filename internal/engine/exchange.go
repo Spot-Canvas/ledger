@@ -137,13 +137,17 @@ func (b *BinanceFuturesExchange) WithClient(c binanceFuturesClient) *BinanceFutu
 }
 
 func (b *BinanceFuturesExchange) OpenPosition(ctx context.Context, req OpenPositionRequest) (*OrderResult, error) {
-	// Set leverage first.
-	if req.Leverage > 0 {
-		if err := b.withRetry(ctx, func(ctx context.Context) error {
-			return b.client.setLeverage(ctx, binanceSymbol(req.Symbol), req.Leverage)
-		}); err != nil {
-			return nil, fmt.Errorf("set leverage: %w", err)
-		}
+	// Set leverage first. Default to 1 when not specified (spot-like signals
+	// carry Leverage=0; explicitly setting 1× prevents the account from
+	// inheriting a stale leverage value from a previous trade).
+	leverage := req.Leverage
+	if leverage <= 0 {
+		leverage = 1
+	}
+	if err := b.withRetry(ctx, func(ctx context.Context) error {
+		return b.client.setLeverage(ctx, binanceSymbol(req.Symbol), leverage)
+	}); err != nil {
+		return nil, fmt.Errorf("set leverage: %w", err)
 	}
 
 	side := "BUY"
@@ -316,9 +320,9 @@ func (c *binanceHTTPClient) newOrder(ctx context.Context, symbol, side, position
 	}
 
 	var body struct {
-		AvgPrice string `json:"avgPrice"`
-		OrigQty  string `json:"origQty"`
-		Status   string `json:"status"`
+		AvgPrice    string `json:"avgPrice"`
+		ExecutedQty string `json:"executedQty"`
+		Status      string `json:"status"`
 	}
 	if err := decodeJSON(resp.Body, &body); err != nil {
 		return nil, err
@@ -326,7 +330,7 @@ func (c *binanceHTTPClient) newOrder(ctx context.Context, symbol, side, position
 
 	result := &binanceOrderResult{}
 	fmt.Sscanf(body.AvgPrice, "%f", &result.AvgPrice)
-	fmt.Sscanf(body.OrigQty, "%f", &result.Quantity)
+	fmt.Sscanf(body.ExecutedQty, "%f", &result.Quantity)
 	return result, nil
 }
 
