@@ -7,6 +7,7 @@ Backtesting revealed that the 1h transformer model on futures-short caused liqui
 - **Engine hard stop (new):** A circuit-breaker stop is computed by the engine at entry time, independent of the signal's SL, using `max_adverse_pct = 30% / leverage` (15% at 2×, 10% at 3×, 6% at 5×, 7% flat for spot). This stop is always active and cannot be disabled by strategy configuration.
 - **Trailing stop (new):** For ML strategies, once a position profits by 1× the signal SL distance, the engine moves the stop to breakeven. Once profitable by 2×, the stop trails 1× SL distance behind the running best price. Disabled for rule-based strategies.
 - **Time-based exit (new):** The engine enforces a per-strategy-type max candle hold: 30 candles for ml_xgboost 5m, 24 candles for ml_transformer 5m, 12 candles for ml_transformer_1h, 48 candles for rule-based 5m, 24 candles for rule-based 1h. When the hold limit is reached, the position is closed at market.
+- **Exit check frequency (new):** The engine goroutines responsible for hard stop and trailing stop SHALL evaluate exit conditions on every price tick received, not only on candle close. Checking only at candle close means a position can overshoot the stop by the full intra-candle range before being closed, compounding losses. Time-based exit checks at candle granularity (one check per completed candle) is sufficient since the unit is candle count.
 - **Exit priority ordering (new):** When multiple exit conditions fire simultaneously the engine resolves them in strict priority: conviction-drop signal → engine hard stop → signal SL → trailing stop → time-based exit → signal TP.
 - **ML vs rule-based TP treatment (clarified):** ML strategies use no fixed TP; rule-based strategies keep the signal TP. The engine derives strategy type from the strategy name prefix (`ml_` = ML, otherwise rule-based).
 
@@ -19,7 +20,14 @@ Backtesting revealed that the 1h transformer model on futures-short caused liqui
 - `exit-orchestration`: Priority resolution when multiple exit conditions are simultaneously satisfied; defines the canonical exit type enum used in exit_reason fields.
 
 ### Modified Capabilities
-- `trade-ingestion`: The `exit_reason` field SHALL accept a structured enum of engine-generated exit types (`conviction-drop`, `hard-stop`, `signal-sl`, `trailing-stop`, `time-exit`, `signal-tp`) in addition to arbitrary strategy-supplied strings, so exit analysis can distinguish engine-managed exits from model exits.
+- `trade-ingestion`: When the engine closes a position due to a risk management rule, the trade event SHALL carry an `exit_reason` string that identifies both the layer and the specific trigger. Format: `"Layer <N>: <label> — <detail>"`. Examples:
+  - `"Layer 2: hard stop — 15.3% adverse move at 2× leverage"`
+  - `"Layer 4: trailing stop — breakeven triggered at +1× SL distance"`
+  - `"Layer 4: trailing stop — trailing at +2× SL distance, best price $0.4821"`
+  - `"Layer 5: time exit — 12-candle hold limit reached"`
+  - `"Layer 1: signal SL — price hit stop at $0.4210"`
+  - `"Layer 6: signal TP — price hit take-profit at $0.5400"`
+  Strategy-emitted conviction-drop exits (Layer 3) do not set an engine exit_reason; the strategy may populate `exit_reason` itself. If a conviction-drop fires with no strategy-supplied reason, the engine SHALL write `"Layer 3: conviction drop"`.
 
 ## Impact
 
