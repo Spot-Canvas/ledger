@@ -97,6 +97,11 @@ tasks:
 
   # ─── Infrastructure ────────────────────────────────────────
 
+  proxy:local:
+    desc: Start local PostgreSQL container (port 5432)
+    cmds:
+      - docker compose up -d postgres
+
   infra:up:
     desc: Start PostgreSQL and NATS containers
     cmds:
