@@ -172,13 +172,13 @@ var tradingSetCmd = &cobra.Command{
 			body["granularity"] = tsGranularity
 		}
 		if cmd.Flags().Changed("long") {
-			body["strategies_long"] = splitCSV(tsLong)
+			body["strategies_long"] = splitCSVOrEmpty(tsLong)
 		}
 		if cmd.Flags().Changed("short") {
-			body["strategies_short"] = splitCSV(tsShort)
+			body["strategies_short"] = splitCSVOrEmpty(tsShort)
 		}
 		if cmd.Flags().Changed("spot") {
-			body["strategies_spot"] = splitCSV(tsSpot)
+			body["strategies_spot"] = splitCSVOrEmpty(tsSpot)
 		}
 		if cmd.Flags().Changed("long-leverage") {
 			body["long_leverage"] = tsLongLeverage
@@ -239,6 +239,77 @@ var tradingDeleteCmd = &cobra.Command{
 			return err
 		}
 		fmt.Printf("Deleted trading config for %s/%s\n", exchange, product)
+		return nil
+	},
+}
+
+// ---- wipe ----
+
+var (
+	twConfirm   bool
+	twExchange  string
+)
+
+var tradingWipeCmd = &cobra.Command{
+	Use:   "wipe <account>",
+	Short: "Delete all trading configs for an account",
+	Long: `Delete every trading config for the given account, leaving it with a clean
+slate ready for a fresh configuration.
+
+Use --exchange to restrict deletion to a single exchange.
+The --confirm flag is required to prevent accidental wipes.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if !twConfirm {
+			return fmt.Errorf("use --confirm to wipe all trading configs")
+		}
+		account := args[0]
+		c := newPlatformClient()
+
+		// Fetch all configs for this account.
+		q := url.Values{}
+		q.Set("account_id", account)
+		var configs []TradingConfig
+		if err := c.Get(c.apiURL("/config/trading", q), &configs); err != nil {
+			return err
+		}
+
+		// Filter by exchange if requested.
+		if twExchange != "" {
+			filtered := configs[:0]
+			for _, tc := range configs {
+				if tc.Exchange == twExchange {
+					filtered = append(filtered, tc)
+				}
+			}
+			configs = filtered
+		}
+
+		if len(configs) == 0 {
+			fmt.Println("no trading configs found — nothing to wipe")
+			return nil
+		}
+
+		// Delete each config.
+		deleted, failed := 0, 0
+		dq := url.Values{}
+		dq.Set("account_id", account)
+		for _, tc := range configs {
+			err := c.Delete(c.apiURL("/config/trading/"+tc.Exchange+"/"+tc.ProductID, dq))
+			if err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "  error deleting %s/%s: %v\n", tc.Exchange, tc.ProductID, err)
+				failed++
+			} else {
+				fmt.Printf("  deleted %s/%s\n", tc.Exchange, tc.ProductID)
+				deleted++
+			}
+		}
+
+		fmt.Printf("wiped %d config(s)", deleted)
+		if failed > 0 {
+			fmt.Printf(", %d error(s)", failed)
+		}
+		fmt.Println()
 		return nil
 	},
 }
@@ -358,6 +429,8 @@ func fmtStrategyParams(params map[string]map[string]float64) string {
 }
 
 // splitCSV splits a comma-separated string into a slice of trimmed strings.
+// Returns nil (omitted in JSON) when s is empty — use splitCSVOrEmpty when the
+// flag was explicitly set and an empty list should clear the field.
 func splitCSV(s string) []string {
 	if s == "" {
 		return nil
@@ -371,6 +444,16 @@ func splitCSV(s string) []string {
 		}
 	}
 	return result
+}
+
+// splitCSVOrEmpty is like splitCSV but returns an empty (non-nil) slice when s
+// is empty, so the field is serialised as [] rather than null.  Use this when
+// an explicitly-passed empty flag should clear an array on the server.
+func splitCSVOrEmpty(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	return splitCSV(s)
 }
 
 func init() {
@@ -388,6 +471,9 @@ func init() {
 	tradingSetCmd.Flags().BoolVar(&tsDisable, "disable", false, "Disable the config")
 	tradingSetCmd.Flags().StringArrayVar(&tsParams, "params", nil, "Per-strategy params: <strategy>:<key>=<value> or <strategy>:clear (repeatable)")
 
-	tradingCmd.AddCommand(tradingListCmd, tradingGetCmd, tradingSetCmd, tradingDeleteCmd)
+	tradingWipeCmd.Flags().BoolVar(&twConfirm, "confirm", false, "Required: confirm the wipe")
+	tradingWipeCmd.Flags().StringVar(&twExchange, "exchange", "", "Restrict wipe to a single exchange")
+
+	tradingCmd.AddCommand(tradingListCmd, tradingGetCmd, tradingSetCmd, tradingDeleteCmd, tradingWipeCmd)
 	rootCmd.AddCommand(tradingCmd)
 }
