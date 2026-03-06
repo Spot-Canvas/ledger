@@ -2,16 +2,13 @@ version: 2
 
 project_name: trader
 
-before:
-  hooks:
-    - go mod tidy
-
 builds:
   - id: trader-cli
     main: ./cmd/trader
     binary: trader
     env:
       - CGO_ENABLED=0
+      - GOFLAGS=-mod=vendor
     goos:
       - darwin
       - linux
