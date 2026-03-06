@@ -31,10 +31,13 @@ var positionsCmd = &cobra.Command{
 			return nil
 		}
 
-		var positions []position
-		if err := c.Get(endpoint, &positions); err != nil {
+		var resp struct {
+			Positions []position `json:"positions"`
+		}
+		if err := c.Get(endpoint, &resp); err != nil {
 			return err
 		}
+		positions := resp.Positions
 
 		rows := make([][]string, len(positions))
 		for i, p := range positions {
