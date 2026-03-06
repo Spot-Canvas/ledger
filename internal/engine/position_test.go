@@ -69,7 +69,7 @@ func TestCalcSize_DefaultPct(t *testing.T) {
 	tc := &TradingConfig{LongLeverage: 1}
 	signal := SignalPayload{Price: 50000}
 
-	size, qty, _, err := e.calculatePositionSize(signal, tc, domain.MarketTypeSpot)
+	size, qty, _, err := e.calculatePositionSize(signal, tc, domain.MarketTypeSpot, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestCalcSize_SignalPositionPctOverride(t *testing.T) {
 	// signal.PositionPct is 0–1 fraction; 0.20 → 20%
 	signal := SignalPayload{Price: 50000, PositionPct: 0.20}
 
-	size, _, _, err := e.calculatePositionSize(signal, tc, domain.MarketTypeSpot)
+	size, _, _, err := e.calculatePositionSize(signal, tc, domain.MarketTypeSpot, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestCalcSize_ClampedToMax(t *testing.T) {
 	tc := &TradingConfig{LongLeverage: 1}
 	signal := SignalPayload{Price: 50000}
 
-	size, _, _, err := e.calculatePositionSize(signal, tc, domain.MarketTypeSpot)
+	size, _, _, err := e.calculatePositionSize(signal, tc, domain.MarketTypeSpot, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestCalcSize_ClampedToMin(t *testing.T) {
 	tc := &TradingConfig{LongLeverage: 1}
 	signal := SignalPayload{Price: 50000}
 
-	size, _, _, err := e.calculatePositionSize(signal, tc, domain.MarketTypeSpot)
+	size, _, _, err := e.calculatePositionSize(signal, tc, domain.MarketTypeSpot, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestCalcSize_FuturesMarginWithLeverage(t *testing.T) {
 	tc := &TradingConfig{LongLeverage: 4}
 	signal := SignalPayload{Price: 50000}
 
-	size, qty, margin, err := e.calculatePositionSize(signal, tc, domain.MarketTypeFutures)
+	size, qty, margin, err := e.calculatePositionSize(signal, tc, domain.MarketTypeFutures, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestCalcSize_FuturesLeverageZeroDefaultsToOne(t *testing.T) {
 	tc := &TradingConfig{LongLeverage: 0} // zero → treated as 1
 	signal := SignalPayload{Price: 1000}
 
-	size, _, margin, err := e.calculatePositionSize(signal, tc, domain.MarketTypeFutures)
+	size, _, margin, err := e.calculatePositionSize(signal, tc, domain.MarketTypeFutures, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,10 +170,63 @@ func TestCalcSize_ZeroPriceError(t *testing.T) {
 	tc := &TradingConfig{LongLeverage: 1}
 	signal := SignalPayload{Price: 0}
 
-	_, _, _, err := e.calculatePositionSize(signal, tc, domain.MarketTypeSpot)
+	_, _, _, err := e.calculatePositionSize(signal, tc, domain.MarketTypeSpot, nil)
 	if err == nil {
 		t.Fatal("expected error for zero price")
 	}
+}
+
+func TestCalcSize_SpotCappedToBalance(t *testing.T) {
+	cfg := &config.Config{
+		PortfolioSize:   10000,
+		PositionSizePct: 50, // would give 5000, but balance is only 300
+	}
+	e := makeEngine(cfg)
+	tc := &TradingConfig{LongLeverage: 1}
+	signal := SignalPayload{Price: 50000}
+	bal := 300.0
+
+	size, qty, _, err := e.calculatePositionSize(signal, tc, domain.MarketTypeSpot, &bal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Capped to available balance
+	assertFloat(t, "size (capped to balance)", 300, size)
+	assertFloat(t, "qty", 300.0/50000, qty)
+}
+
+func TestCalcSize_FuturesCappedToBalance(t *testing.T) {
+	cfg := &config.Config{
+		PortfolioSize:   10000,
+		PositionSizePct: 20, // would give 2000 notional, margin=500 at 4x
+	}
+	e := makeEngine(cfg)
+	tc := &TradingConfig{LongLeverage: 4}
+	signal := SignalPayload{Price: 50000}
+	bal := 200.0 // only $200 available; margin ($500) exceeds it
+
+	size, qty, margin, err := e.calculatePositionSize(signal, tc, domain.MarketTypeFutures, &bal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// margin capped to $200; notional = 200*4 = 800
+	assertFloat(t, "margin (capped to balance)", 200, margin)
+	assertFloat(t, "size (scaled by leverage)", 800, size)
+	assertFloat(t, "qty", 800.0/50000, qty)
+}
+
+func TestCalcSize_FuturesShortUsesShortLeverage(t *testing.T) {
+	cfg := &config.Config{PortfolioSize: 10000, PositionSizePct: 10}
+	e := makeEngine(cfg)
+	tc := &TradingConfig{LongLeverage: 2, ShortLeverage: 5}
+	signal := SignalPayload{Price: 1000, Action: "SHORT"}
+
+	_, _, margin, err := e.calculatePositionSize(signal, tc, domain.MarketTypeFutures, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// size = 10000*10% = 1000; margin = 1000/5 = 200 (not 1000/2 = 500)
+	assertFloat(t, "margin (short leverage=5)", 200, margin)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

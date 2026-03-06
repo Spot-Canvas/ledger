@@ -113,7 +113,9 @@ func (r *Repository) upsertSpotPosition(ctx context.Context, tx pgx.Tx, trade *d
 	newQuantity := pos.Quantity - trade.Quantity
 
 	if newQuantity <= 0 {
-		// Position fully closed
+		// Position fully closed: return the full cost basis (capital unlocked) plus P&L.
+		// The cost basis was deducted from balance at open; we must credit it back now,
+		// adjusted by the actual gain/loss. Net credit = sell proceeds = qty*price - fee.
 		exitPrice := trade.Price
 		_, err = tx.Exec(ctx, `
 			UPDATE ledger_positions
@@ -124,11 +126,12 @@ func (r *Repository) upsertSpotPosition(ctx context.Context, tx pgx.Tx, trade *d
 		if err != nil {
 			return err
 		}
-		// Credit realised P&L to balance (no-op if no balance row exists)
-		return r.AdjustBalance(ctx, tx, trade.TenantID, trade.AccountID, "USD", realizedPnL)
+		// Credit sell proceeds (unlocked capital + P&L) to balance.
+		sellProceeds := trade.Quantity*trade.Price - trade.Fee
+		return r.AdjustBalance(ctx, tx, trade.TenantID, trade.AccountID, "USD", sellProceeds)
 	}
 
-	// Partial close — reduce quantity, keep proportional cost basis
+	// Partial close — reduce quantity, keep proportional cost basis.
 	remainingCostBasis := pos.AvgEntryPrice * newQuantity
 	_, err = tx.Exec(ctx, `
 		UPDATE ledger_positions
@@ -138,8 +141,9 @@ func (r *Repository) upsertSpotPosition(ctx context.Context, tx pgx.Tx, trade *d
 	if err != nil {
 		return err
 	}
-	// Credit realised P&L to balance (no-op if no balance row exists)
-	return r.AdjustBalance(ctx, tx, trade.TenantID, trade.AccountID, "USD", realizedPnL)
+	// Credit sell proceeds of the closed portion (unlocked capital + P&L) to balance.
+	sellProceeds := trade.Quantity*trade.Price - trade.Fee
+	return r.AdjustBalance(ctx, tx, trade.TenantID, trade.AccountID, "USD", sellProceeds)
 }
 
 func (r *Repository) upsertFuturesPosition(ctx context.Context, tx pgx.Tx, trade *domain.Trade) error {
@@ -273,9 +277,18 @@ func (r *Repository) upsertFuturesPosition(ctx context.Context, tx pgx.Tx, trade
 		realizedPnL -= *trade.FundingFee
 	}
 
+	// Compute the full position margin so we can return the locked capital at close.
+	// Priority: pos.Margin (stored at open) → pos.CostBasis / leverage.
+	var fullMargin float64
+	if pos.Margin != nil {
+		fullMargin = *pos.Margin
+	} else if levVal > 0 {
+		fullMargin = pos.CostBasis / float64(levVal)
+	}
+
 	newQuantity := pos.Quantity - trade.Quantity
 	if newQuantity <= 0 {
-		// Fully closed
+		// Fully closed: return entire locked margin plus the P&L.
 		exitPrice := trade.Price
 		_, err = tx.Exec(ctx, `
 			UPDATE ledger_positions
@@ -286,11 +299,14 @@ func (r *Repository) upsertFuturesPosition(ctx context.Context, tx pgx.Tx, trade
 		if err != nil {
 			return err
 		}
-		// Credit realised P&L to balance (no-op if no balance row exists)
-		return r.AdjustBalance(ctx, tx, trade.TenantID, trade.AccountID, "USD", realizedPnL)
+		// Return full margin + P&L (margin was locked at open; P&L adjusts the gain/loss).
+		return r.AdjustBalance(ctx, tx, trade.TenantID, trade.AccountID, "USD", fullMargin+realizedPnL)
 	}
 
-	// Partially closed
+	// Partially closed: return the pro-rated margin for the closed portion plus P&L.
+	closedFraction := trade.Quantity / pos.Quantity
+	marginFreed := fullMargin * closedFraction
+
 	remainingCost := pos.AvgEntryPrice * newQuantity
 	_, err = tx.Exec(ctx, `
 		UPDATE ledger_positions
@@ -300,8 +316,8 @@ func (r *Repository) upsertFuturesPosition(ctx context.Context, tx pgx.Tx, trade
 	if err != nil {
 		return err
 	}
-	// Credit realised P&L to balance (no-op if no balance row exists)
-	return r.AdjustBalance(ctx, tx, trade.TenantID, trade.AccountID, "USD", realizedPnL)
+	// Return proportional margin + P&L for the closed portion.
+	return r.AdjustBalance(ctx, tx, trade.TenantID, trade.AccountID, "USD", marginFreed+realizedPnL)
 }
 
 // upsertSpotPositionNoBalance is identical to upsertSpotPosition but skips balance adjustment.

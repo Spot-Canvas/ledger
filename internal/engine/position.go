@@ -119,19 +119,37 @@ func (e *Engine) handleOpenSignal(ctx context.Context, signal SignalPayload, pro
 		}
 	}
 
-	// Calculate position size.
-	size, qty, margin, err := e.calculatePositionSize(signal, tc, marketType)
+	// Fetch current balance to size position within available funds.
+	tenantID := e.tenantID()
+	balance, balErr := e.repo.GetAccountBalance(ctx, tenantID, accountID, "USD")
+	if balErr != nil {
+		logger.Error().Err(balErr).Msg("failed to fetch account balance")
+		return
+	}
+
+	// Calculate position size capped to available balance.
+	size, qty, margin, err := e.calculatePositionSize(signal, tc, marketType, balance)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to calculate position size")
 		return
 	}
 
-	// Balance check.
-	tenantID := e.tenantID()
+	// Determine the required capital for this position.
 	required := margin
 	if marketType == domain.MarketTypeSpot {
 		required = size
 	}
+
+	// Reject if the effective position is below the configured minimum.
+	if e.cfg.MinPositionSize > 0 && required < e.cfg.MinPositionSize {
+		logger.Warn().
+			Float64("required", required).
+			Float64("min_position_size", e.cfg.MinPositionSize).
+			Msg("available balance below minimum position size — skipping trade")
+		return
+	}
+
+	// Safety-net balance check (guards against races and zero-balance edge cases).
 	if err := e.checkBalance(ctx, tenantID, accountID, required); err != nil {
 		logger.Warn().Err(err).Msg("insufficient balance — skipping trade")
 		return
@@ -339,7 +357,10 @@ func mapSignalToSide(action string, tc *TradingConfig) (domain.Side, domain.Posi
 }
 
 // calculatePositionSize returns (size, quantity, margin, error).
-func (e *Engine) calculatePositionSize(signal SignalPayload, tc *TradingConfig, marketType domain.MarketType) (size, qty, margin float64, err error) {
+// availableBalance, when non-nil, caps the position so it cannot exceed the
+// account's current funds: for spot the full size is capped; for futures the
+// margin (size/leverage) is capped and the notional size is scaled accordingly.
+func (e *Engine) calculatePositionSize(signal SignalPayload, tc *TradingConfig, marketType domain.MarketType, availableBalance *float64) (size, qty, margin float64, err error) {
 	pct := e.cfg.PositionSizePct
 	if signal.PositionPct > 0 {
 		pct = signal.PositionPct * 100 // signal uses 0–1 fraction
@@ -347,7 +368,7 @@ func (e *Engine) calculatePositionSize(signal SignalPayload, tc *TradingConfig, 
 
 	size = e.cfg.PortfolioSize * (pct / 100)
 
-	// Clamp to [min, max].
+	// Clamp to [min, max] from config.
 	if e.cfg.MinPositionSize > 0 && size < e.cfg.MinPositionSize {
 		size = e.cfg.MinPositionSize
 	}
@@ -358,16 +379,37 @@ func (e *Engine) calculatePositionSize(signal SignalPayload, tc *TradingConfig, 
 	if signal.Price <= 0 {
 		return 0, 0, 0, fmt.Errorf("signal price is zero or negative")
 	}
-	qty = size / signal.Price
 
+	// Determine leverage for futures (use the correct side).
+	var leverage float64
 	if marketType == domain.MarketTypeFutures {
-		leverage := float64(tc.LongLeverage)
+		if signal.Action == "SHORT" {
+			leverage = float64(tc.ShortLeverage)
+		} else {
+			leverage = float64(tc.LongLeverage)
+		}
 		if leverage <= 0 {
 			leverage = 1
 		}
 		margin = size / leverage
 	}
 
+	// Cap to available balance so we never invest more than the account holds.
+	if availableBalance != nil && *availableBalance > 0 {
+		if marketType == domain.MarketTypeSpot {
+			if size > *availableBalance {
+				size = *availableBalance
+			}
+		} else {
+			// For futures the capital at risk is the margin, not the full notional.
+			if margin > *availableBalance {
+				margin = *availableBalance
+				size = margin * leverage
+			}
+		}
+	}
+
+	qty = size / signal.Price
 	return size, qty, margin, nil
 }
 
