@@ -175,6 +175,17 @@ DEPLOY_CMD=(
     --set-secrets="DB_PASSWORD=${SECRET_PREFIX}-db-password:latest,NATS_URLS=${SECRET_PREFIX}-nats-url:latest,NATS_CREDS=${SECRET_PREFIX}-nats-creds:latest"
 )
 
+# Production: route all egress through the default VPC so Cloud NAT provides
+# a static outbound IP (required for Binance API key IP restrictions).
+# The NAT is pinned to 'trader-nat-ip' — run scripts/setup-static-ip.sh once first.
+if [[ "$ENV" == "production" ]]; then
+    DEPLOY_CMD+=(
+        --network=default
+        --subnet=default
+        --vpc-egress=all-traffic
+    )
+fi
+
 run_cmd "${DEPLOY_CMD[@]}"
 
 # ── Done ─────────────────────────────────────────────────────
