@@ -46,6 +46,7 @@ type SignalPayload struct {
 	TakeProfit    float64            `json:"take_profit"`
 	RiskReasoning string             `json:"risk_reasoning"`
 	PositionPct   float64            `json:"position_pct"`
+	IsExit        bool               `json:"is_exit"`   // true when the strategy is closing an existing position
 	Indicators    map[string]float64 `json:"indicators"`
 	Timestamp     int64              `json:"timestamp"` // Unix seconds
 }
@@ -64,6 +65,7 @@ type TradingConfig struct {
 	ShortLeverage   int                           `json:"short_leverage"`
 	Enabled         bool                          `json:"enabled"`
 	StrategyParams  map[string]map[string]float64 `json:"strategy_params"`
+	MinConfidence   float64                       `json:"min_confidence"`
 }
 
 // signalKey uniquely identifies a (exchange, product, granularity, strategy) tuple.
@@ -420,9 +422,12 @@ func (e *Engine) handleSignal(ctx context.Context, msg *nats.Msg) {
 		}
 	}
 
-	// 4. Confidence check for entry signals.
+	// 4. Global confidence floor for entry signals.
+	// Per-config thresholds (min_confidence) are enforced later in handleOpenSignal
+	// once the trading config is loaded. This 0.5 floor is a cheap early exit for
+	// obviously low-quality signals before any DB or API work is done.
 	if (signal.Action == "BUY" || signal.Action == "SHORT") && signal.Confidence < 0.5 {
-		logger.Debug().Msg("signal confidence below 0.5, dropping")
+		logger.Debug().Msg("signal confidence below global floor of 0.5, dropping")
 		return
 	}
 

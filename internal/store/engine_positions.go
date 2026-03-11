@@ -49,7 +49,7 @@ func (r *Repository) InsertPositionState(ctx context.Context, tenantID uuid.UUID
 			leverage      = EXCLUDED.leverage,
 			strategy      = EXCLUDED.strategy,
 			granularity   = EXCLUDED.granularity,
-			opened_at     = EXCLUDED.opened_at,
+			opened_at     = engine_position_state.opened_at,
 			peak_price    = EXCLUDED.peak_price,
 			trailing_stop = EXCLUDED.trailing_stop
 	`,

@@ -81,13 +81,20 @@ func (e *Engine) processSignal(ctx context.Context, signal SignalPayload, produc
 				return
 			}
 		case "SELL", "COVER":
-			if thresh, ok := params["exit_confidence"]; ok && signal.Confidence > 0 && signal.Confidence < thresh {
-				logger.Debug().
-					Str("strategy", strategy).
-					Float64("confidence", signal.Confidence).
-					Float64("exit_threshold", thresh).
-					Msg("exit signal below account exit_confidence threshold, skipping")
-				return
+			// ML strategies self-govern exit confidence server-side: the ingestion
+			// server only emits a SELL when P(long) drops below the strategy's own
+			// exit threshold, and sets is_exit=true. Applying an additional
+			// exit_confidence gate here would double-filter and silently swallow
+			// legitimate exits. Skip the gate for any signal flagged is_exit=true.
+			if !signal.IsExit {
+				if thresh, ok := params["exit_confidence"]; ok && signal.Confidence > 0 && signal.Confidence < thresh {
+					logger.Debug().
+						Str("strategy", strategy).
+						Float64("confidence", signal.Confidence).
+						Float64("exit_threshold", thresh).
+						Msg("exit signal below account exit_confidence threshold, skipping")
+					return
+				}
 			}
 		}
 	}
@@ -146,6 +153,15 @@ func (e *Engine) handleOpenSignal(ctx context.Context, signal SignalPayload, pro
 		}
 	}
 	e.conflictMu.Unlock()
+
+	// Per-config confidence threshold check.
+	if tc.MinConfidence > 0 && signal.Confidence < tc.MinConfidence {
+		logger.Debug().
+			Float64("confidence", signal.Confidence).
+			Float64("min_confidence", tc.MinConfidence).
+			Msg("signal confidence below configured threshold, dropping")
+		return
+	}
 
 	// Max positions check (per account).
 	if e.cfg.MaxPositions > 0 {

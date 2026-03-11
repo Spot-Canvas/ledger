@@ -207,6 +207,41 @@ func TestResolveTargetAccounts_SingleAccount_WrongID_Dropped(t *testing.T) {
 	}
 }
 
+// ── TradingConfig.MinConfidence ───────────────────────────────────────────────
+
+func TestTradingConfig_MinConfidence_AboveThreshold(t *testing.T) {
+	tc := TradingConfig{MinConfidence: 0.6}
+	signal := SignalPayload{Confidence: 0.61}
+	if tc.MinConfidence > 0 && signal.Confidence < tc.MinConfidence {
+		t.Fatal("confidence 0.61 should pass threshold 0.6")
+	}
+}
+
+func TestTradingConfig_MinConfidence_BelowThreshold(t *testing.T) {
+	tc := TradingConfig{MinConfidence: 0.6}
+	signal := SignalPayload{Confidence: 0.59}
+	if !(tc.MinConfidence > 0 && signal.Confidence < tc.MinConfidence) {
+		t.Fatal("confidence 0.59 should be rejected by threshold 0.6")
+	}
+}
+
+func TestTradingConfig_MinConfidence_ExactlyAtThreshold(t *testing.T) {
+	tc := TradingConfig{MinConfidence: 0.6}
+	signal := SignalPayload{Confidence: 0.60}
+	if tc.MinConfidence > 0 && signal.Confidence < tc.MinConfidence {
+		t.Fatal("confidence exactly at threshold 0.6 should pass")
+	}
+}
+
+func TestTradingConfig_MinConfidence_ZeroMeansNoThreshold(t *testing.T) {
+	tc := TradingConfig{MinConfidence: 0}
+	signal := SignalPayload{Confidence: 0.51}
+	// When MinConfidence is 0, the per-config check is skipped entirely.
+	if tc.MinConfidence > 0 && signal.Confidence < tc.MinConfidence {
+		t.Fatal("zero MinConfidence should not gate any signal")
+	}
+}
+
 // ── signal filter checks (stale, confidence, cooldown) ───────────────────────
 // These are tested via handleSignal indirectly through the engine, but we can
 // exercise the timestamp staleness boundary directly.
