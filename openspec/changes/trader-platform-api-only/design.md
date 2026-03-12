@@ -154,7 +154,7 @@ This is an accepted trade-off for removing the DB dependency.
 - **Balance drift on balance update failure** → If `PUT /api/v1/accounts/{id}/balance` fails after a successful trade write, the stored balance will be stale until the next successful update. Mitigation: the next trade's balance read will use the stale value — conservative for sizing, not dangerous. Balance reconciles automatically on the next successful write.
 - **Firestore write latency on the trade path** → Each position state change makes a Firestore write (~10ms in-region). For the daily P&L accumulator, Firestore transactions ensure no lost increments under concurrent writes. Mitigation: use Firestore's atomic increment (`FieldTransform`) for P&L updates rather than read-modify-write.
 - **Platform API down → engine cannot record trades** → If `POST /api/v1/trades` fails the engine must not double-execute on retry. Mitigation: idempotent trade IDs on the API side (already in place). Engine logs the failure and skips the trade rather than blocking the signal consumer.
-- **Daily P&L resets on restart** → Engine may take on more risk than intended on the same calendar day after a cold restart. Mitigation: acceptable for paper trading; revisit for live trading when hard limits matter more.
+
 
 ## Migration Plan
 
