@@ -62,6 +62,7 @@ Enables the following APIs on your project (idempotent — safe to run again):
 - `secretmanager.googleapis.com`
 - `artifactregistry.googleapis.com`
 - `iam.googleapis.com`
+- `firestore.googleapis.com`
 
 ### Step 4 — Service account + IAM
 Creates a dedicated service account `trader-sa@<project>.iam.gserviceaccount.com` and grants it `roles/secretmanager.secretAccessor`. The trader runs as this account — it has no other permissions.
@@ -73,14 +74,19 @@ This is required if you want to use Binance's (or another broker's) IP allowlist
 
 **Cost:** ~$1.50/month for the reserved static IP.
 
-### Step 6 — Secrets in Secret Manager
+### Step 6 — Firestore database
+Creates a Firestore Native mode database (`(default)`) in your project and grants the trader service account `roles/datastore.user`. Firestore is used by the trader engine to durably store risk-management state — open position stop-losses, take-profits, trailing stops, and daily P&L — so this data survives container restarts and redeployments.
+
+**Cost:** Firestore has a generous free tier (1 GiB storage, 50k reads/day, 20k writes/day). A single trader instance will stay within the free tier indefinitely under normal operation.
+
+### Step 7 — Secrets in Secret Manager
 Uploads your NATS credentials and Signal ngn API key to GCP Secret Manager. The secrets are named:
 - `trader-nats-creds`
 - `trader-sn-api-key`
 
 The installer never writes these to disk or leaves them in environment variables after the script exits. It also offers to securely delete the local `.creds` file once uploaded.
 
-### Step 7 — Deploy to Cloud Run
+### Step 8 — Deploy to Cloud Run
 Deploys the trader using the pre-built image:
 
 ```
@@ -93,7 +99,7 @@ The service is configured with:
 - NATS and API key secrets mounted from Secret Manager
 - VPC egress routed through Cloud NAT (for the static IP)
 
-### Step 8 — Health check + summary
+### Step 9 — Health check + summary
 Waits for the Cloud Run service to report `Ready`, then prints your service URL, static egress IP, and useful commands.
 
 ---

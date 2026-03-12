@@ -166,6 +166,7 @@ log_value "Region:         $REGION"
 log_value "Service:        $SERVICE_NAME (Cloud Run)"
 log_value "Service Acct:   $SA_EMAIL"
 log_value "Static IP:      $ADDRESS_NAME"
+log_value "Firestore:      (default) database — risk state + daily P&L"
 log_value "Secrets:        $SECRET_NATS, $SECRET_API_KEY"
 log_value "Image:          $TRADER_IMAGE"
 log_value "Trading mode:   paper (safe default)"
@@ -187,6 +188,7 @@ APIS=(
     "secretmanager.googleapis.com"
     "artifactregistry.googleapis.com"
     "iam.googleapis.com"
+    "firestore.googleapis.com"
 )
 
 gcloud services enable "${APIS[@]}" --project="$PROJECT"
@@ -258,7 +260,32 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 6 — SECRET MANAGER
+# STEP 6 — FIRESTORE
+# ────────────────────────────────────────────────────────────────────────────
+log_section "6/9  Setting up Firestore..."
+
+log_step "Creating Firestore Native mode database (default)..."
+if exists_resource gcloud firestore databases describe \
+        --database="(default)" --project="$PROJECT"; then
+    log_warn "Firestore database '(default)' already exists — skipping."
+else
+    gcloud firestore databases create \
+        --location="$REGION" \
+        --type=firestore-native \
+        --project="$PROJECT"
+    log_info "Firestore database created."
+fi
+
+log_step "Granting Firestore access to service account..."
+gcloud projects add-iam-policy-binding "$PROJECT" \
+    --member="serviceAccount:${SA_EMAIL}" \
+    --role="roles/datastore.user" \
+    --condition=None \
+    --quiet
+log_info "Firestore IAM role granted."
+
+# ────────────────────────────────────────────────────────────────────────────
+# STEP 7 — SECRET MANAGER
 # ────────────────────────────────────────────────────────────────────────────
 log_section "6/8  Storing secrets in Secret Manager..."
 
@@ -307,9 +334,9 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 7 — DEPLOY CLOUD RUN
+# STEP 8 — DEPLOY CLOUD RUN
 # ────────────────────────────────────────────────────────────────────────────
-log_section "7/8  Deploying trader to Cloud Run..."
+log_section "8/9  Deploying trader to Cloud Run..."
 
 gcloud run deploy "$SERVICE_NAME" \
     --project="$PROJECT" \
@@ -322,7 +349,7 @@ gcloud run deploy "$SERVICE_NAME" \
     --cpu=1 \
     --min-instances=0 \
     --max-instances=1 \
-    --set-env-vars="TRADING_MODE=paper,TRADING_ENABLED=true,ACCOUNT_NAME=${ACCOUNT_NAME},PORTFOLIO_SIZE_USD=${PORTFOLIO_SIZE},NATS_URL=tls://connect.ngs.global" \
+    --set-env-vars="TRADING_MODE=paper,TRADING_ENABLED=true,ACCOUNT_NAME=${ACCOUNT_NAME},PORTFOLIO_SIZE_USD=${PORTFOLIO_SIZE},NATS_URL=tls://connect.ngs.global,FIRESTORE_PROJECT_ID=${PROJECT}" \
     --set-secrets="NATS_CREDS=${SECRET_NATS}:latest,SN_API_KEY=${SECRET_API_KEY}:latest" \
     --network=default \
     --subnet=default \
@@ -331,9 +358,9 @@ gcloud run deploy "$SERVICE_NAME" \
 log_info "Cloud Run service deployed."
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 8 — WAIT FOR HEALTHY + PRINT SUMMARY
+# STEP 9 — WAIT FOR HEALTHY + PRINT SUMMARY
 # ────────────────────────────────────────────────────────────────────────────
-log_section "8/8  Waiting for service to be ready..."
+log_section "9/9  Waiting for service to be ready..."
 
 ATTEMPTS=0
 MAX_ATTEMPTS=30
