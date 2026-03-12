@@ -165,8 +165,4 @@ engine-state/
 
 **Rollback:** Re-deploy the previous image (which has the DB store). No data migration needed — the `ledger_*` tables are untouched by this change.
 
-## Open Questions
 
-- Does `POST /api/v1/trades` accept all fields the engine currently records (strategy, confidence, stop_loss, take_profit, entry_reason, exit_reason, leverage, margin, funding_fee)? Needs verification against the `ledger-rest-ingest` API schema before implementation.
-- What is the exact shape of `GET /api/v1/accounts/{id}/portfolio` — does it return enough position fields (entry_price, stop_loss, take_profit, leverage, side) for the engine to reconstruct `EnginePositionState`?
-- Does `GET /api/v1/accounts` return balance in the same response, or does the engine need a separate call to `GET /api/v1/accounts/{id}/stats`?
