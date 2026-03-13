@@ -108,7 +108,7 @@ func (a signalAllowlist) allows(exchange, product, granularity, strategy string)
 // fetchAllowlist fetches enabled trading configs from the SN API and builds an allowlist.
 // Also returns a map of product → TradingConfig for position sizing lookups.
 func fetchAllowlist(ctx context.Context, cfg *config.Config) (signalAllowlist, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.SNAPIURL+"/config/trading", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.TraderAPIURL+"/config/trading", nil)
 	if err != nil {
 		return nil, fmt.Errorf("build allowlist request: %w", err)
 	}
@@ -149,7 +149,7 @@ func fetchAllowlist(ctx context.Context, cfg *config.Config) (signalAllowlist, e
 
 // fetchTradingConfigs fetches all enabled trading configs indexed by product ID.
 func fetchTradingConfigs(ctx context.Context, cfg *config.Config) (tradingConfigByProduct, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.SNAPIURL+"/config/trading", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.TraderAPIURL+"/config/trading", nil)
 	if err != nil {
 		return nil, fmt.Errorf("build config request: %w", err)
 	}
@@ -240,7 +240,7 @@ func parseSubject(subj string) (exchange, product, granularity, strategy string)
 // Returns 0 and a non-nil error if the price cannot be fetched.
 // The SN price endpoint is GET {SN_API_URL}/prices/{exchange}/{product}?granularity=ONE_MINUTE.
 func fetchCurrentPrice(ctx context.Context, cfg *config.Config, exchange, product string) (float64, error) {
-	url := fmt.Sprintf("%s/prices/%s/%s?granularity=ONE_MINUTE", cfg.SNAPIURL, exchange, product)
+	url := fmt.Sprintf("%s/prices/%s/%s?granularity=ONE_MINUTE", cfg.TraderAPIURL, exchange, product)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, err
