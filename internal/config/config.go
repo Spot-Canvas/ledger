@@ -48,6 +48,7 @@ type Config struct {
 	MaxPositions     int     // max concurrent open positions (0 = no limit)
 	DailyLossLimit   float64 // max daily loss in USD before halting opens (0 = no limit)
 	KillSwitchFile   string  // path to kill switch file (default: /tmp/trader.kill)
+	TenantID            string  // tenant UUID — read from TENANT_ID env var; if unset engine resolves via /auth/resolve
 	SNAPIKey            string  // SignalNGN API key
 	SNAPIURL            string  // SignalNGN API base URL (deprecated alias, use TraderAPIURL)
 	TraderAPIURL        string  // Signal ngn platform API base URL
@@ -89,6 +90,7 @@ func Load() (*Config, error) {
 		MaxPositions:     parseInt(os.Getenv("MAX_POSITIONS"), 0),
 		DailyLossLimit:   parseFloat(os.Getenv("DAILY_LOSS_LIMIT"), 0),
 		KillSwitchFile:   getEnv("KILL_SWITCH_FILE", "/tmp/trader.kill"),
+		TenantID:           os.Getenv("TENANT_ID"),
 		SNAPIKey:           os.Getenv("SN_API_KEY"),
 		SNAPIURL:           getEnv("SN_API_URL", "https://api.signal-ngn.com"),
 		TraderAPIURL:       getEnv("TRADER_API_URL", "https://signalngn-api-potbdcvufa-ew.a.run.app"),

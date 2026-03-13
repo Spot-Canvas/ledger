@@ -333,7 +333,7 @@ var tradesListCmd = &cobra.Command{
 			}
 
 			posRows[i] = posRow{
-				id:         p.ID,
+				id:         fmt.Sprintf("%d", p.ID),
 				result:     result,
 				symbol:     p.Symbol,
 				side:       p.Side,

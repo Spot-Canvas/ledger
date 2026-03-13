@@ -7,12 +7,13 @@
 substitutions:
   _REGION: europe-west3
   _ENV: staging
-  _SERVICE_PREFIX: signalngn-trader
+  _TENANT_ID: c2899e28-2bbe-47c1-8d29-84ee1a04fd37
+  _TRADER_ACCOUNTS: paper-transformer
   _IMAGE_NAME: trader
-  _MEMORY: "256Mi"
+  _MEMORY: "512Mi"
   _CPU: "1"
   _MIN_INSTANCES: "0"
-  _MAX_INSTANCES: "3"
+  _MAX_INSTANCES: "1"
   _CONCURRENCY: "80"
 
 options:
@@ -56,14 +57,14 @@ steps:
         echo "Deploying trader to $$ENV environment..."
 
         if [[ "$$ENV" == "staging" ]]; then
-          SERVICE_NAME="${_SERVICE_PREFIX}-staging"
+          SERVICE_NAME="ts-${_TENANT_ID}"
           SECRET_PREFIX="spot-canvas-staging"
+          FIRESTORE_PROJECT="${PROJECT_ID}"
         else
-          SERVICE_NAME="${_SERVICE_PREFIX}"
+          SERVICE_NAME="ts-${_TENANT_ID}"
           SECRET_PREFIX="spot-canvas"
+          FIRESTORE_PROJECT="${PROJECT_ID}"
         fi
-
-        CLOUDSQL_INSTANCE="${PROJECT_ID}:${_REGION}:spot-canvas-db"
 
         gcloud run deploy "$$SERVICE_NAME" \
           --project="${PROJECT_ID}" \
@@ -78,9 +79,8 @@ steps:
           --timeout=300s \
           --port=8080 \
           --allow-unauthenticated \
-          --add-cloudsql-instances="$$CLOUDSQL_INSTANCE" \
-          --set-env-vars="ENVIRONMENT=$$ENV,LOG_LEVEL=info,CLOUDSQL_INSTANCE=$$CLOUDSQL_INSTANCE,DB_NAME=spot_canvas,DB_USER=spot" \
-          --set-secrets="DB_PASSWORD=$$SECRET_PREFIX-db-password:latest,NATS_URLS=$$SECRET_PREFIX-nats-url:latest,NATS_CREDS=$$SECRET_PREFIX-nats-creds:latest"
+          --set-env-vars="ENVIRONMENT=$$ENV,LOG_LEVEL=info,TENANT_ID=${_TENANT_ID},TRADING_ENABLED=true,TRADING_MODE=paper,TRADER_ACCOUNTS=${_TRADER_ACCOUNTS},FIRESTORE_PROJECT_ID=$$FIRESTORE_PROJECT" \
+          --set-secrets="SN_API_KEY=$$SECRET_PREFIX-sn-api-key:latest,NATS_URLS=$$SECRET_PREFIX-nats-url:latest,NATS_CREDS=$$SECRET_PREFIX-nats-creds:latest"
 
         URL=$$(gcloud run services describe "$$SERVICE_NAME" \
           --project="${PROJECT_ID}" \

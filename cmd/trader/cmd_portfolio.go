@@ -9,7 +9,7 @@ import (
 )
 
 type position struct {
-	ID            string     `json:"id"`
+	ID            int64      `json:"id"`
 	AccountID     string     `json:"account_id"`
 	Symbol        string     `json:"symbol"`
 	MarketType    string     `json:"market_type"`

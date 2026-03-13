@@ -134,20 +134,30 @@ func (e *Engine) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// Resolve tenant ID via the platform API (GET /auth/resolve).
+	// Resolve tenant UUID: prefer the TENANT_ID env var; fall back to GET /auth/resolve.
 	platformClient := platform.New(e.cfg.TraderAPIURL, e.cfg.SNAPIKey)
-	tenantIDStr, err := platformClient.ResolveAuth(ctx)
-	if err != nil {
-		e.logger.Error().Err(err).Msg("failed to resolve tenant from platform API — engine aborted")
-		return nil
+	if e.cfg.TenantID != "" {
+		tenantUUID, err := uuid.Parse(e.cfg.TenantID)
+		if err != nil {
+			e.logger.Error().Err(err).Str("tenant_id", e.cfg.TenantID).Msg("TENANT_ID env var is not a valid UUID — engine aborted")
+			return nil
+		}
+		e.tenantUUID = tenantUUID
+		e.logger.Info().Str("tenant_id", e.tenantUUID.String()).Msg("tenant ID loaded from TENANT_ID env var")
+	} else {
+		tenantIDStr, err := platformClient.ResolveAuth(ctx)
+		if err != nil {
+			e.logger.Error().Err(err).Msg("failed to resolve tenant from platform API — engine aborted (set TENANT_ID env var to skip)")
+			return nil
+		}
+		tenantUUID, err := uuid.Parse(tenantIDStr)
+		if err != nil {
+			e.logger.Error().Err(err).Str("tenant_id", tenantIDStr).Msg("platform returned invalid tenant_id UUID — engine aborted")
+			return nil
+		}
+		e.tenantUUID = tenantUUID
+		e.logger.Info().Str("tenant_id", e.tenantUUID.String()).Msg("resolved tenant from platform API")
 	}
-	tenantUUID, err := uuid.Parse(tenantIDStr)
-	if err != nil {
-		e.logger.Error().Err(err).Str("tenant_id", tenantIDStr).Msg("platform returned invalid tenant_id UUID — engine aborted")
-		return nil
-	}
-	e.tenantUUID = tenantUUID
-	e.logger.Info().Str("tenant_id", e.tenantUUID.String()).Msg("resolved tenant from platform API")
 
 	// Resolve the account list: use cfg.TraderAccounts if set, otherwise load
 	// all accounts for the tenant from the platform API.
